@@ -7,10 +7,12 @@ data loading, iNaturalist photos, name cleanup, and the species photo card.
 
 import requests
 import streamlit as st
+from pathlib import Path
 
 from data_utils import load_data, resolve_columns
 
-DATA_PATH = "national_park.csv"   # change here if your CSV is renamed
+BASE_DIR = Path(__file__).parent
+DATA_PATH = BASE_DIR / "national_park.csv"
 
 # Light palette
 PALETTE = ["#2176C9", "#2D8AE1", "#70ADE7", "#EE4E56", "#B4B4AA", "#5FA05F", "#15569B"]
