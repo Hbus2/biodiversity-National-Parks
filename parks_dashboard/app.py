@@ -1,5 +1,5 @@
 """
-app.py  -  National Parks Biodiversity dashboard (home page), light theme.
+app.py  -  Homepage for the biodiversity National park Dashboard.
 Run:  streamlit run app.py
 """
 
