@@ -15,12 +15,16 @@ from data_utils import (
 from park_coordinates import get_coordinates
 from shared import inject_css, get_data, species_card, DATA_PATH, ACCENT, TEXT, MUTED, PALETTE
 
-st.set_page_config(page_title="Parks Biodiversity Dashboard", page_icon="🌲", layout="wide")
+st.set_page_config(
+    page_title="Parks Biodiversity Dashboard",
+    layout="wide"
+)
+
 inject_css()
 
 # Sidebar navigation
-st.sidebar.page_link("app.py", label="🏠 Dashboard")
-st.sidebar.page_link("pages/1_Species_Gallery.py", label="📷 Species Gallery")
+st.sidebar.page_link("app.py", label="Dashboard")
+st.sidebar.page_link("pages/1_Species_Gallery.py", label="Species Gallery")
 st.sidebar.divider()
 
 
