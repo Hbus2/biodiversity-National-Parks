@@ -430,28 +430,20 @@ def park_map(map_df):
     # USGS TOPOGRAPHIC MAP
     # DEFAULT MAP
     # ========================================================
-
-    folium.TileLayer(
-        tiles=(
-            "https://basemap.nationalmap.gov/"
-            "arcgis/rest/services/"
-            "USGSTopo/MapServer/tile/"
-            "{z}/{y}/{x}"
-        ),
-
-        attr=(
-            "U.S. Geological Survey "
-            "| The National Map"
-        ),
-
-        name="USGS Topographic",
-
-        overlay=False,
-        control=True,
-        show=True,
-
-        max_zoom=20,
-    ).add_to(m)
+folium.TileLayer(
+    tiles=(
+        "https://basemap.nationalmap.gov/"
+        "arcgis/rest/services/"
+        "USGSShadedReliefOnly/MapServer/tile/"
+        "{z}/{y}/{x}"
+    ),
+    attr="U.S. Geological Survey | The National Map",
+    name="Terrain",
+    overlay=False,
+    control=True,
+    show=True,
+    max_zoom=16,
+).add_to(m)
 
 
     # ========================================================
