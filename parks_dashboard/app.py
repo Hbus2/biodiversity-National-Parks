@@ -1017,7 +1017,7 @@ fdf = apply_filters(
 
 st.markdown(
     '<div class="dash-title">'
-    'National Parks Biodiversity Dashboard'
+    'National Parks Biodiversity Discovery'
     '</div>',
 
     unsafe_allow_html=True,
