@@ -855,7 +855,7 @@ st.markdown(
 
 st.markdown(
     '<div class="dash-sub">'
-    'Species records across U.S. National Parks'
+    'Species records across the 15 most visited U.S. National Parks'
     '</div>',
     unsafe_allow_html=True,
 )
