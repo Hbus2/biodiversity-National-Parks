@@ -62,22 +62,27 @@ inject_css()
 # ============================================================
 
 def style_fig(fig, height=320, show_legend=True):
+
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+
         font=dict(
             color=TEXT,
             family="Segoe UI, sans-serif",
             size=12,
         ),
+
         margin=dict(
             l=10,
             r=10,
             t=10,
             b=10,
         ),
+
         height=height,
         showlegend=show_legend,
+
         legend=dict(
             bgcolor="rgba(0,0,0,0)",
             font=dict(
@@ -110,6 +115,7 @@ def render_donut(
     n=6,
     height=240,
 ):
+
     bd = rollup_top_n(
         bd,
         n,
@@ -131,12 +137,15 @@ def render_donut(
     pi = 0
 
     for lab in labels:
+
         if lab.lower() == "other":
+
             colors.append(
                 "#C7CBD1"
             )
 
         else:
+
             colors.append(
                 PALETTE[
                     pi % len(PALETTE)
@@ -144,6 +153,7 @@ def render_donut(
             )
 
             pi += 1
+
 
     fig = px.pie(
         bd,
@@ -153,15 +163,18 @@ def render_donut(
         color_discrete_sequence=colors,
     )
 
+
     fig.update_traces(
         sort=False,
         textinfo="none",
+
         marker=dict(
             line=dict(
                 color="#FFFFFF",
                 width=2,
             )
         ),
+
         hovertemplate=(
             "%{label}: %{value:,} "
             "(%{percent})"
@@ -169,33 +182,41 @@ def render_donut(
         ),
     )
 
+
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+
         showlegend=False,
+
         height=height,
+
         margin=dict(
             l=6,
             r=6,
             t=6,
             b=6,
         ),
+
         annotations=[
             dict(
                 text=f"<b>{total:,}</b>",
                 x=0.5,
                 y=0.54,
                 showarrow=False,
+
                 font=dict(
                     size=18,
                     color=TEXT,
                 ),
             ),
+
             dict(
                 text=center_units,
                 x=0.5,
                 y=0.43,
                 showarrow=False,
+
                 font=dict(
                     size=10,
                     color=MUTED,
@@ -203,6 +224,7 @@ def render_donut(
             ),
         ],
     )
+
 
     st.plotly_chart(
         fig,
@@ -212,6 +234,11 @@ def render_donut(
         },
     )
 
+
+    # --------------------------------------------------------
+    # CUSTOM LEGEND
+    # --------------------------------------------------------
+
     rows = ""
 
     for lab, c, cnt in zip(
@@ -219,6 +246,7 @@ def render_donut(
         colors,
         counts,
     ):
+
         pct = (
             cnt / total * 100
             if total
@@ -227,15 +255,26 @@ def render_donut(
 
         rows += (
             f"<div class='lg-item'>"
-            f"<span class='lg-dot' "
-            f"style='background:{c}'></span>"
-            f"<span class='lg-label' "
-            f"title='{lab}'>{lab}</span>"
-            f"<span class='lg-pct'>"
+
+            f"<span "
+            f"class='lg-dot' "
+            f"style='background:{c}'>"
+            f"</span>"
+
+            f"<span "
+            f"class='lg-label' "
+            f"title='{lab}'>"
+            f"{lab}"
+            f"</span>"
+
+            f"<span "
+            f"class='lg-pct'>"
             f"{pct:.1f}%"
             f"</span>"
+
             f"</div>"
         )
+
 
     st.markdown(
         f"<div class='lg-wrap'>{rows}</div>",
@@ -252,6 +291,7 @@ def hbar(
     height=330,
     color=ACCENT,
 ):
+
     fig = px.bar(
         bd,
         x="count",
@@ -261,6 +301,7 @@ def hbar(
         color_discrete_sequence=[color],
     )
 
+
     fig.update_traces(
         marker_line_width=0,
         textposition="outside",
@@ -268,17 +309,21 @@ def hbar(
         cliponaxis=False,
     )
 
+
     fig.update_layout(
+
         yaxis=dict(
             autorange="reversed",
             title=None,
             automargin=True,
         ),
+
         xaxis=dict(
             title=None,
             showticklabels=False,
         ),
     )
+
 
     fig = style_fig(
         fig,
@@ -286,15 +331,18 @@ def hbar(
         show_legend=False,
     )
 
+
     fig.update_xaxes(
         showgrid=False,
         zeroline=False,
     )
 
+
     fig.update_yaxes(
         showgrid=False,
         zeroline=False,
     )
+
 
     fig.update_layout(
         margin=dict(
@@ -305,22 +353,27 @@ def hbar(
         )
     )
 
+
     return fig
 
 
 # ============================================================
-# INTERACTIVE TERRAIN MAP
+# INTERACTIVE NATIONAL PARK MAP
 # ============================================================
 
 def park_map(map_df):
     """
-    Build the interactive National Parks map.
+    Interactive Folium map.
 
-    Default layer:
-        USGS Shaded Relief Only
+    Default:
+        Esri World Terrain Base
 
-    This gives terrain and elevation without road names
-    and other distracting map labels.
+    This provides:
+        - colored terrain
+        - mountains/elevation
+        - water
+        - minimal visual clutter
+        - no road-name-heavy default map
 
     Optional layers:
         USGS Topographic
@@ -329,7 +382,7 @@ def park_map(map_df):
     """
 
     # --------------------------------------------------------
-    # STARTING MAP POSITION
+    # MAP POSITION
     # --------------------------------------------------------
 
     if len(map_df) == 1:
@@ -352,7 +405,7 @@ def park_map(map_df):
 
 
     # --------------------------------------------------------
-    # CREATE MAP
+    # CREATE BASE MAP
     # --------------------------------------------------------
 
     m = folium.Map(
@@ -360,39 +413,52 @@ def park_map(map_df):
             center_lat,
             center_lon,
         ],
+
         zoom_start=zoom_start,
+
         tiles=None,
+
         control_scale=True,
+
         prefer_canvas=True,
+
         min_zoom=2,
+
+        max_zoom=13,
     )
 
 
     # ========================================================
-    # DEFAULT: CLEAN SHADED TERRAIN
+    # DEFAULT COLORED TERRAIN
     # ========================================================
 
     folium.TileLayer(
         tiles=(
-            "https://basemap.nationalmap.gov/"
-            "arcgis/rest/services/"
-            "USGSShadedReliefOnly/MapServer/tile/"
+            "https://services.arcgisonline.com/"
+            "ArcGIS/rest/services/"
+            "World_Terrain_Base/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
+
         attr=(
-            "U.S. Geological Survey "
-            "| The National Map"
+            "Esri, USGS, NOAA "
+            "and contributors"
         ),
+
         name="Terrain",
+
         overlay=False,
+
         control=True,
+
         show=True,
-        max_zoom=16,
+
+        max_zoom=13,
     ).add_to(m)
 
 
     # ========================================================
-    # OPTIONAL: FULL TOPOGRAPHIC MAP
+    # OPTIONAL USGS TOPOGRAPHIC MAP
     # ========================================================
 
     folium.TileLayer(
@@ -402,20 +468,26 @@ def park_map(map_df):
             "USGSTopo/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
+
         attr=(
             "U.S. Geological Survey "
             "| The National Map"
         ),
+
         name="USGS Topographic",
+
         overlay=False,
+
         control=True,
+
         show=False,
-        max_zoom=20,
+
+        max_zoom=16,
     ).add_to(m)
 
 
     # ========================================================
-    # OPTIONAL: IMAGERY WITH TOPOGRAPHIC INFORMATION
+    # OPTIONAL USGS IMAGERY + TOPO
     # ========================================================
 
     folium.TileLayer(
@@ -425,33 +497,43 @@ def park_map(map_df):
             "USGSImageryTopo/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
+
         attr=(
             "U.S. Geological Survey "
             "| The National Map"
         ),
+
         name="Imagery + Topo",
+
         overlay=False,
+
         control=True,
+
         show=False,
-        max_zoom=20,
+
+        max_zoom=16,
     ).add_to(m)
 
 
     # ========================================================
-    # OPTIONAL: SIMPLE LIGHT MAP
+    # OPTIONAL LIGHT MAP
     # ========================================================
 
     folium.TileLayer(
         tiles="CartoDB Positron",
+
         name="Light Map",
+
         overlay=False,
+
         control=True,
+
         show=False,
     ).add_to(m)
 
 
     # ========================================================
-    # DETERMINE MARKER SIZE
+    # PARK MARKER SCALING
     # ========================================================
 
     if len(map_df):
@@ -469,7 +551,7 @@ def park_map(map_df):
 
 
     # ========================================================
-    # ADD PARK MARKERS
+    # PARK MARKERS
     # ========================================================
 
     for _, row in map_df.iterrows():
@@ -491,7 +573,10 @@ def park_map(map_df):
         )
 
 
-        # Marker size is based on record count
+        # ----------------------------------------------------
+        # MARKER SIZE
+        # ----------------------------------------------------
+
         radius = (
             6
             + math.sqrt(
@@ -523,11 +608,18 @@ def park_map(map_df):
             "font-size:13px;"
             "min-width:190px;"
             "'>"
+
             f"<b>{park_name}</b>"
+
             "<br>"
-            "<span style='color:#6B7280;'>"
+
+            "<span "
+            "style='color:#6B7280;'>"
+
             f"{records:,} biodiversity records"
+
             "</span>"
+
             "</div>"
         )
 
@@ -539,7 +631,7 @@ def park_map(map_df):
 
 
         # ----------------------------------------------------
-        # BLUE PARK MARKER
+        # PARK DOT
         # ----------------------------------------------------
 
         folium.CircleMarker(
@@ -547,19 +639,27 @@ def park_map(map_df):
                 latitude,
                 longitude,
             ],
+
             radius=radius,
+
             tooltip=tooltip,
+
             popup=popup,
+
             color="#FFFFFF",
+
             weight=2,
+
             fill=True,
+
             fill_color="#2176C9",
-            fill_opacity=0.88,
+
+            fill_opacity=0.90,
         ).add_to(m)
 
 
     # ========================================================
-    # MAP LAYER SELECTOR
+    # LAYER CONTROL
     # ========================================================
 
     folium.LayerControl(
@@ -579,14 +679,18 @@ def kpi_html(
     label,
     value,
 ):
+
     return (
         f'<div class="kpi-card">'
+
         f'<div class="kpi-label">'
         f'{label}'
         f'</div>'
+
         f'<div class="kpi-value">'
         f'{value}'
         f'</div>'
+
         f'</div>'
     )
 
@@ -599,6 +703,7 @@ def card_title(
     text,
     sub=None,
 ):
+
     st.markdown(
         f'<div class="card-title">'
         f'{text}'
@@ -606,7 +711,9 @@ def card_title(
         unsafe_allow_html=True,
     )
 
+
     if sub:
+
         st.markdown(
             f'<div class="card-sub">'
             f'{sub}'
@@ -620,6 +727,7 @@ def card_title(
 # ============================================================
 
 def get_api_key():
+
     try:
 
         key = st.secrets[
@@ -630,11 +738,14 @@ def get_api_key():
 
         return ""
 
+
     if (
         not key
         or str(key).startswith("YOUR_")
     ):
+
         return ""
+
 
     return str(key)
 
@@ -652,20 +763,29 @@ def fetch_youtube_videos(
     api_key,
     max_results=4,
 ):
+
     url = (
         "https://www.googleapis.com/"
         "youtube/v3/search"
     )
 
+
     params = {
         "part": "snippet",
+
         "q": query,
+
         "type": "video",
+
         "maxResults": max_results,
+
         "videoEmbeddable": "true",
+
         "order": "relevance",
+
         "key": api_key,
     }
+
 
     response = requests.get(
         url,
@@ -673,9 +793,12 @@ def fetch_youtube_videos(
         timeout=10,
     )
 
+
     response.raise_for_status()
 
+
     out = []
+
 
     for item in response.json().get(
         "items",
@@ -688,11 +811,13 @@ def fetch_youtube_videos(
             .get("videoId")
         )
 
+
         if vid:
 
             out.append(
                 {
                     "id": vid,
+
                     "title": (
                         item
                         .get("snippet", {})
@@ -700,6 +825,7 @@ def fetch_youtube_videos(
                     ),
                 }
             )
+
 
     return out
 
@@ -713,6 +839,7 @@ try:
     df, cols = get_data(
         DATA_PATH
     )
+
 
 except FileNotFoundError:
 
@@ -736,26 +863,31 @@ st.sidebar.markdown(
 
 selected_parks = st.sidebar.multiselect(
     "Park name",
+
     unique_values(
         df,
         cols["park_name"],
     ),
+
     placeholder="All parks",
 )
 
 
 selected_categories = st.sidebar.multiselect(
     "Category",
+
     unique_values(
         df,
         cols["category"],
     ),
+
     placeholder="All categories",
 )
 
 
 search_text = st.sidebar.text_input(
     "Search species",
+
     placeholder=(
         "Scientific or common name..."
     ),
@@ -789,6 +921,7 @@ st.markdown(
     '<div class="dash-title">'
     'National Parks Biodiversity Dashboard'
     '</div>',
+
     unsafe_allow_html=True,
 )
 
@@ -797,6 +930,7 @@ st.markdown(
     '<div class="dash-sub">'
     'Species records across U.S. National Parks'
     '</div>',
+
     unsafe_allow_html=True,
 )
 
@@ -835,6 +969,7 @@ st.markdown(
     )
 
     + "</div>",
+
     unsafe_allow_html=True,
 )
 
@@ -869,9 +1004,13 @@ with st.container(
 
         st_folium(
             terrain_map,
+
             use_container_width=True,
+
             height=520,
+
             returned_objects=[],
+
             key="national_parks_map",
         )
 
@@ -937,7 +1076,11 @@ with st.container(
         try:
 
             videos = fetch_youtube_videos(
-                f"{park} biodiversity wildlife nature",
+                f"{park} "
+                f"biodiversity "
+                f"wildlife "
+                f"nature",
+
                 api_key,
             )
 
@@ -1036,7 +1179,8 @@ for col, group_name in zip(
             else:
 
                 st.info(
-                    "No records in this group."
+                    "No records "
+                    "in this group."
                 )
 
 
@@ -1138,7 +1282,9 @@ with ac:
                     height=360,
                     color="#2E9E5B",
                 ),
+
                 use_container_width=True,
+
                 config={
                     "displayModeBar": False
                 },
@@ -1336,6 +1482,7 @@ def species_spotlight(
 
     n_pages = max(
         1,
+
         (
             total_sp
             + page_size
@@ -1384,6 +1531,7 @@ def species_spotlight(
                     "Scientific name",
                     "",
                 ),
+
                 row.get(
                     "Common names",
                     "",
@@ -1416,6 +1564,7 @@ with st.container(
     card_title(
         "Species spotlight"
     )
+
 
     species_spotlight(
         spotlight_df
