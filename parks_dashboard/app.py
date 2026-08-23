@@ -54,6 +54,18 @@ st.set_page_config(
     layout="wide",
 )
 
+st.sidebar.page_link(
+    "app.py",
+    label="Homepage"
+)
+
+st.sidebar.page_link(
+    "pages/1_Species_Gallery.py",
+    label="Species Gallery"
+)
+
+st.sidebar.divider()
+
 inject_css()
 
 
