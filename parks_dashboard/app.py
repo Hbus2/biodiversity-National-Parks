@@ -1,13 +1,21 @@
 """
-app.py - Homepage for the Biodiversity National Parks Dashboard.
+app.py
+------
+Homepage for the National Parks Biodiversity Dashboard.
 
 Run:
     streamlit run app.py
 """
 
+import math
+
+import folium
 import plotly.express as px
 import requests
 import streamlit as st
+import xyzservices.providers as xyz
+
+from streamlit_folium import st_folium
 
 from data_utils import (
     apply_filters,
@@ -50,34 +58,27 @@ st.set_page_config(
 inject_css()
 
 
-
-
 # ============================================================
 # CHART STYLING
 # ============================================================
 
 def style_fig(fig, height=320, show_legend=True):
-
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-
         font=dict(
             color=TEXT,
             family="Segoe UI, sans-serif",
             size=12,
         ),
-
         margin=dict(
             l=10,
             r=10,
             t=10,
             b=10,
         ),
-
         height=height,
         showlegend=show_legend,
-
         legend=dict(
             bgcolor="rgba(0,0,0,0)",
             font=dict(
@@ -110,15 +111,10 @@ def render_donut(
     n=6,
     height=240,
 ):
-
-    """
-    Clean donut chart with:
-    - no slice clutter
-    - center total
-    - custom legend underneath
-    """
-
-    bd = rollup_top_n(bd, n)
+    bd = rollup_top_n(
+        bd,
+        n,
+    )
 
     labels = [
         str(x)
@@ -132,22 +128,16 @@ def render_donut(
 
     total = sum(counts)
 
-
-    # --------------------------------------------------------
-    # Colors
-    # --------------------------------------------------------
-
     colors = []
     pi = 0
 
     for lab in labels:
-
         if lab.lower() == "other":
-
-            colors.append("#C7CBD1")
+            colors.append(
+                "#C7CBD1"
+            )
 
         else:
-
             colors.append(
                 PALETTE[
                     pi % len(PALETTE)
@@ -155,11 +145,6 @@ def render_donut(
             )
 
             pi += 1
-
-
-    # --------------------------------------------------------
-    # Plotly donut
-    # --------------------------------------------------------
 
     fig = px.pie(
         bd,
@@ -172,59 +157,46 @@ def render_donut(
     fig.update_traces(
         sort=False,
         textinfo="none",
-
         marker=dict(
             line=dict(
                 color="#FFFFFF",
                 width=2,
             )
         ),
-
         hovertemplate=(
-            "%{label}: "
-            "%{value:,} "
+            "%{label}: %{value:,} "
             "(%{percent})"
             "<extra></extra>"
         ),
     )
 
-
     fig.update_layout(
-
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-
         showlegend=False,
-
         height=height,
-
         margin=dict(
             l=6,
             r=6,
             t=6,
             b=6,
         ),
-
         annotations=[
-
             dict(
                 text=f"<b>{total:,}</b>",
                 x=0.5,
                 y=0.54,
                 showarrow=False,
-
                 font=dict(
                     size=18,
                     color=TEXT,
                 ),
             ),
-
             dict(
                 text=center_units,
                 x=0.5,
                 y=0.43,
                 showarrow=False,
-
                 font=dict(
                     size=10,
                     color=MUTED,
@@ -232,7 +204,6 @@ def render_donut(
             ),
         ],
     )
-
 
     st.plotly_chart(
         fig,
@@ -242,11 +213,6 @@ def render_donut(
         },
     )
 
-
-    # --------------------------------------------------------
-    # Custom legend
-    # --------------------------------------------------------
-
     rows = ""
 
     for lab, c, cnt in zip(
@@ -254,7 +220,6 @@ def render_donut(
         colors,
         counts,
     ):
-
         pct = (
             cnt / total * 100
             if total
@@ -263,29 +228,20 @@ def render_donut(
 
         rows += (
             f"<div class='lg-item'>"
-
-            f"<span "
-            f"class='lg-dot' "
-            f"style='background:{c}'>"
-            f"</span>"
-
-            f"<span "
-            f"class='lg-label' "
-            f"title='{lab}'>"
-            f"{lab}"
-            f"</span>"
-
-            f"<span "
-            f"class='lg-pct'>"
+            f"<span class='lg-dot' "
+            f"style='background:{c}'></span>"
+            f"<span class='lg-label' "
+            f"title='{lab}'>{lab}</span>"
+            f"<span class='lg-pct'>"
             f"{pct:.1f}%"
             f"</span>"
-
             f"</div>"
         )
 
-
     st.markdown(
-        f"<div class='lg-wrap'>{rows}</div>",
+        f"<div class='lg-wrap'>"
+        f"{rows}"
+        f"</div>",
         unsafe_allow_html=True,
     )
 
@@ -299,12 +255,6 @@ def hbar(
     height=330,
     color=ACCENT,
 ):
-
-    """
-    Horizontal bar chart.
-    Largest values appear first.
-    """
-
     fig = px.bar(
         bd,
         x="count",
@@ -322,13 +272,11 @@ def hbar(
     )
 
     fig.update_layout(
-
         yaxis=dict(
             autorange="reversed",
             title=None,
             automargin=True,
         ),
-
         xaxis=dict(
             title=None,
             showticklabels=False,
@@ -364,81 +312,176 @@ def hbar(
 
 
 # ============================================================
-# NATIONAL PARK MAP
+# TOPOGRAPHIC NATIONAL PARK MAP
 # ============================================================
 
 def park_map(map_df):
+    """
+    Build an interactive Folium map.
 
-    fig = px.scatter_mapbox(
+    OpenTopoMap is the default terrain/topographic layer.
+    A standard OpenStreetMap layer is also available through
+    the layer selector.
+    """
 
-        map_df,
-
-        lat="lat",
-        lon="lon",
-
-        size="Records",
-        color="Records",
-
-        color_continuous_scale=[
-            "#70ADE7",
-            "#2176C9",
-            "#15569B",
+    m = folium.Map(
+        location=[
+            39.5,
+            -98.35,
         ],
-
-        size_max=26,
-        zoom=2.7,
-
-        hover_name="ParkName",
-
-        hover_data={
-            "Records": True,
-            "lat": False,
-            "lon": False,
-        },
+        zoom_start=4,
+        tiles=None,
+        control_scale=True,
+        prefer_canvas=True,
     )
 
 
-    fig.update_layout(
+    # --------------------------------------------------------
+    # TOPOGRAPHIC BASE MAP
+    # --------------------------------------------------------
 
-        mapbox_style="open-street-map",
+    folium.TileLayer(
+        tiles=xyz.OpenTopoMap,
+        name="Topographic",
+        overlay=False,
+        control=True,
+        show=True,
+    ).add_to(m)
 
-        mapbox_center={
-            "lat": 39.5,
-            "lon": -98.35,
-        },
 
-        paper_bgcolor="rgba(0,0,0,0)",
+    # --------------------------------------------------------
+    # STANDARD MAP OPTION
+    # --------------------------------------------------------
 
-        margin=dict(
-            l=0,
-            r=0,
-            t=0,
-            b=0,
-        ),
+    folium.TileLayer(
+        tiles="OpenStreetMap",
+        name="Street Map",
+        overlay=False,
+        control=True,
+        show=False,
+    ).add_to(m)
 
-        height=430,
 
-        font=dict(
-            color=TEXT
-        ),
+    # --------------------------------------------------------
+    # OPTIONAL CLEAN MAP
+    # --------------------------------------------------------
 
-        coloraxis_colorbar=dict(
-            title="Records"
-        ),
+    folium.TileLayer(
+        tiles="CartoDB Positron",
+        name="Light Map",
+        overlay=False,
+        control=True,
+        show=False,
+    ).add_to(m)
+
+
+    # --------------------------------------------------------
+    # SCALE PARK MARKERS
+    # --------------------------------------------------------
+
+    max_records = (
+        map_df["Records"].max()
+        if len(map_df)
+        else 1
     )
 
-    return fig
+    max_records = max(
+        int(max_records),
+        1,
+    )
+
+
+    # --------------------------------------------------------
+    # PARK MARKERS
+    # --------------------------------------------------------
+
+    for _, row in map_df.iterrows():
+
+        park_name = str(
+            row["ParkName"]
+        )
+
+        records = int(
+            row["Records"]
+        )
+
+
+        # Scale marker radius while preventing huge bubbles
+        radius = 6 + (
+            math.sqrt(
+                records / max_records
+            )
+            * 12
+        )
+
+
+        tooltip = (
+            f"<b>{park_name}</b><br>"
+            f"{records:,} biodiversity records"
+        )
+
+
+        popup = folium.Popup(
+            html=(
+                f"<div style='"
+                f"font-family:Arial,sans-serif;"
+                f"font-size:13px;"
+                f"min-width:180px;'>"
+                f"<b>{park_name}</b><br>"
+                f"<span style='color:#6B7280;'>"
+                f"{records:,} biodiversity records"
+                f"</span>"
+                f"</div>"
+            ),
+            max_width=280,
+        )
+
+
+        folium.CircleMarker(
+            location=[
+                float(row["lat"]),
+                float(row["lon"]),
+            ],
+            radius=radius,
+            tooltip=tooltip,
+            popup=popup,
+            color="#FFFFFF",
+            weight=2,
+            fill=True,
+            fill_color="#2176C9",
+            fill_opacity=0.82,
+        ).add_to(m)
+
+
+    # --------------------------------------------------------
+    # MAP LAYER CONTROL
+    # --------------------------------------------------------
+
+    folium.LayerControl(
+        position="topright",
+        collapsed=True,
+    ).add_to(m)
+
+
+    return m
 
 
 # ============================================================
 # KPI CARD
 # ============================================================
 
-def kpi_html(label, value):
+def kpi_html(
+    label,
+    value,
+):
     return (
         f'<div class="kpi-card">'
-        f'<div class="kpi-label">{label}</div>'
-        f'<div class="kpi-value">{value}</div>'
+        f'<div class="kpi-label">'
+        f'{label}'
+        f'</div>'
+        f'<div class="kpi-value">'
+        f'{value}'
+        f'</div>'
         f'</div>'
     )
 
@@ -451,7 +494,6 @@ def card_title(
     text,
     sub=None,
 ):
-
     st.markdown(
         f'<div class="card-title">'
         f'{text}'
@@ -460,7 +502,6 @@ def card_title(
     )
 
     if sub:
-
         st.markdown(
             f'<div class="card-sub">'
             f'{sub}'
@@ -470,36 +511,26 @@ def card_title(
 
 
 # ============================================================
-# YOUTUBE API KEY
+# YOUTUBE API
 # ============================================================
 
 def get_api_key():
-
     try:
-
         key = st.secrets[
             "YOUTUBE_API_KEY"
         ]
 
     except Exception:
-
         return ""
-
 
     if (
         not key
         or str(key).startswith("YOUR_")
     ):
-
         return ""
-
 
     return str(key)
 
-
-# ============================================================
-# YOUTUBE VIDEO SEARCH
-# ============================================================
 
 @st.cache_data(
     ttl=3600,
@@ -510,61 +541,45 @@ def fetch_youtube_videos(
     api_key,
     max_results=4,
 ):
-
     url = (
         "https://www.googleapis.com/"
         "youtube/v3/search"
     )
 
-
     params = {
-
         "part": "snippet",
-
         "q": query,
-
         "type": "video",
-
         "maxResults": max_results,
-
         "videoEmbeddable": "true",
-
         "order": "relevance",
-
         "key": api_key,
     }
 
-
-    r = requests.get(
+    response = requests.get(
         url,
         params=params,
         timeout=10,
     )
 
-    r.raise_for_status()
-
+    response.raise_for_status()
 
     out = []
 
-
-    for item in r.json().get(
+    for item in response.json().get(
         "items",
         [],
     ):
-
         vid = (
             item
             .get("id", {})
             .get("videoId")
         )
 
-
         if vid:
-
             out.append(
                 {
                     "id": vid,
-
                     "title": (
                         item
                         .get("snippet", {})
@@ -572,7 +587,6 @@ def fetch_youtube_videos(
                     ),
                 }
             )
-
 
     return out
 
@@ -582,18 +596,13 @@ def fetch_youtube_videos(
 # ============================================================
 
 try:
-
     df, cols = get_data(
         DATA_PATH
     )
 
 except FileNotFoundError:
-
     st.error(
-
-        f"Could not find "
-        f"'{DATA_PATH}'. "
-
+        f"Could not find '{DATA_PATH}'. "
         f"Put your CSV in this folder "
         f"or update DATA_PATH in shared.py."
     )
@@ -611,35 +620,27 @@ st.sidebar.markdown(
 
 
 selected_parks = st.sidebar.multiselect(
-
     "Park name",
-
     unique_values(
         df,
         cols["park_name"],
     ),
-
     placeholder="All parks",
 )
 
 
 selected_categories = st.sidebar.multiselect(
-
     "Category",
-
     unique_values(
         df,
         cols["category"],
     ),
-
     placeholder="All categories",
 )
 
 
 search_text = st.sidebar.text_input(
-
     "Search species",
-
     placeholder=(
         "Scientific or common name..."
     ),
@@ -647,8 +648,8 @@ search_text = st.sidebar.text_input(
 
 
 st.sidebar.caption(
-
-  "Search by park or species to view more detailed information."
+    "Search by park or species to view "
+    "more detailed information."
 )
 
 
@@ -657,10 +658,8 @@ st.sidebar.caption(
 # ============================================================
 
 fdf = apply_filters(
-
     df,
     cols,
-
     selected_parks,
     selected_categories,
     search_text,
@@ -672,21 +671,17 @@ fdf = apply_filters(
 # ============================================================
 
 st.markdown(
-
     '<div class="dash-title">'
     'National Parks Biodiversity Dashboard'
     '</div>',
-
     unsafe_allow_html=True,
 )
 
 
 st.markdown(
-
     '<div class="dash-sub">'
     'Species records across U.S. National Parks'
     '</div>',
-
     unsafe_allow_html=True,
 )
 
@@ -703,10 +698,27 @@ total, n_parks, n_species, pct_accepted = kpis(
 
 st.markdown(
     '<div class="kpi-row">'
-    + kpi_html("Total records", f"{total:,}")
-    + kpi_html("National parks", f"{n_parks:,}")
-    + kpi_html("Species", f"{n_species:,}")
-    + kpi_html("Park-accepted", f"{pct_accepted:.0f}%")
+
+    + kpi_html(
+        "Total records",
+        f"{total:,}",
+    )
+
+    + kpi_html(
+        "National parks",
+        f"{n_parks:,}",
+    )
+
+    + kpi_html(
+        "Species",
+        f"{n_species:,}",
+    )
+
+    + kpi_html(
+        "Park-accepted",
+        f"{pct_accepted:.0f}%",
+    )
+
     + "</div>",
     unsafe_allow_html=True,
 )
@@ -719,49 +731,43 @@ st.markdown(
 with st.container(
     border=True
 ):
-
     card_title(
-        "Park locations"
+        "Park locations",
+        "Interactive topographic map",
     )
 
-
     map_df, missing = build_park_map_df(
-
         fdf,
         cols,
         get_coordinates,
     )
 
-
     if len(map_df):
 
-        st.plotly_chart(
+        terrain_map = park_map(
+            map_df
+        )
 
-            park_map(
-                map_df
-            ),
-
+        st_folium(
+            terrain_map,
             use_container_width=True,
-
-            config={
-                "displayModeBar": False
-            },
+            height=500,
+            returned_objects=[],
+            key="national_parks_map",
         )
 
     else:
 
         st.info(
-            "No mapped parks "
-            "for the current filter."
+            "No mapped parks for "
+            "the current filter."
         )
 
 
     if missing:
 
         st.caption(
-
             "No coordinates on file for: "
-
             + ", ".join(
                 sorted(missing)
             )
@@ -775,106 +781,84 @@ with st.container(
 with st.container(
     border=True
 ):
-
     card_title(
         "Biodiversity videos"
     )
 
-
     api_key = get_api_key()
-
 
     if not api_key:
 
         st.info(
-
             "Add a YouTube Data API key "
             "to .streamlit/secrets.toml "
             "to enable videos."
         )
-
 
     elif len(
         selected_parks
     ) != 1:
 
         st.info(
-
             "Select a single park "
-            "in the filter to load "
-            "related biodiversity videos."
+            "to load related biodiversity videos."
         )
-
 
     else:
 
         park = selected_parks[0]
 
-
         try:
 
             videos = fetch_youtube_videos(
-
-                f"{park} "
-                f"biodiversity "
-                f"wildlife "
-                f"nature",
-
+                f"{park} biodiversity "
+                f"wildlife nature",
                 api_key,
             )
-
 
         except Exception:
 
             videos = []
 
             st.warning(
-
-                "Couldn't load videos - "
-                "check the API key "
+                "Couldn't load videos. "
+                "Check the API key "
                 "or daily quota."
             )
 
 
         if videos:
 
-            for col, v in zip(
-
+            for col, video in zip(
                 st.columns(
                     len(videos)
                 ),
-
                 videos,
             ):
 
                 with col:
 
                     st.video(
-
                         "https://www.youtube.com/"
-                        f"watch?v={v['id']}"
+                        f"watch?v={video['id']}"
                     )
 
                     st.caption(
-                        v["title"]
+                        video["title"]
                     )
-
 
         else:
 
             st.caption(
-
-                f"No videos found "
-                f"for {park}."
+                f"No videos found for {park}."
             )
 
 
 # ============================================================
-# CATEGORY GROUP DONUT CHARTS
+# CATEGORY GROUP CHARTS
 # ============================================================
 
 group_subs = {
-
     "Flora, Fungi & Microbiota":
         "Sessile / non-motile life",
 
@@ -887,9 +871,7 @@ group_subs = {
 
 
 for col, group_name in zip(
-
     st.columns(3),
-
     CATEGORY_GROUP_ORDER,
 ):
 
@@ -900,39 +882,30 @@ for col, group_name in zip(
         ):
 
             card_title(
-
                 group_name,
-
                 group_subs.get(
                     group_name
                 ),
             )
 
-
             bd = group_category_breakdown(
-
                 fdf,
                 cols,
                 group_name,
             )
 
-
             if len(bd):
 
                 render_donut(
-
                     bd,
-
                     center_units="records",
-
                     n=6,
                 )
 
             else:
 
                 st.info(
-                    "No records "
-                    "in this group."
+                    "No records in this group."
                 )
 
 
@@ -949,10 +922,8 @@ unassigned = unassigned_categories(
 if unassigned:
 
     st.caption(
-
         "Categories not assigned to a group "
         "(edit CATEGORY_GROUPS in data_utils.py): "
-
         + ", ".join(
             unassigned
         )
@@ -966,10 +937,6 @@ if unassigned:
 oc, ac = st.columns(2)
 
 
-# ------------------------------------------------------------
-# TAXONOMIC ORDER
-# ------------------------------------------------------------
-
 with oc:
 
     with st.container(
@@ -981,25 +948,17 @@ with oc:
             "Top orders",
         )
 
-
         bd = value_breakdown(
-
             fdf,
-
             cols["order"],
         )
-
 
         if len(bd):
 
             render_donut(
-
                 bd,
-
                 center_units="records",
-
                 n=6,
-
                 height=300,
             )
 
@@ -1009,10 +968,6 @@ with oc:
                 "No order data."
             )
 
-
-# ------------------------------------------------------------
-# ABUNDANCE
-# ------------------------------------------------------------
 
 with ac:
 
@@ -1025,29 +980,21 @@ with ac:
             "Records by abundance",
         )
 
-
         ab = value_breakdown(
-
             fdf,
-
             cols["abundance"],
-
             blank_label="Unknown",
         )
-
 
         if len(ab):
 
             st.plotly_chart(
-
                 hbar(
                     ab,
                     height=360,
                     color="#2E9E5B",
                 ),
-
                 use_container_width=True,
-
                 config={
                     "displayModeBar": False
                 },
@@ -1067,10 +1014,6 @@ with ac:
 c4, c5, c6 = st.columns(3)
 
 
-# ------------------------------------------------------------
-# FAMILY
-# ------------------------------------------------------------
-
 with c4:
 
     with st.container(
@@ -1081,29 +1024,19 @@ with c4:
             "Family"
         )
 
-
         fam_tbl = breakdown_table(
-
             fdf,
-
             cols["family"],
-
             "Family",
-
             top_n=15,
         )
-
 
         if len(fam_tbl):
 
             st.dataframe(
-
                 fam_tbl,
-
                 use_container_width=True,
-
                 hide_index=True,
-
                 height=330,
             )
 
@@ -1113,10 +1046,6 @@ with c4:
                 "No family data."
             )
 
-
-# ------------------------------------------------------------
-# NATIVENESS
-# ------------------------------------------------------------
 
 with c5:
 
@@ -1128,25 +1057,17 @@ with c5:
             "Nativeness"
         )
 
-
         nat_tbl = breakdown_table(
-
             fdf,
-
             cols["nativeness"],
-
             "Nativeness",
         )
-
 
         if len(nat_tbl):
 
             st.dataframe(
-
                 nat_tbl,
-
                 use_container_width=True,
-
                 hide_index=True,
             )
 
@@ -1156,10 +1077,6 @@ with c5:
                 "No nativeness data."
             )
 
-
-# ------------------------------------------------------------
-# PARK ACCEPTED
-# ------------------------------------------------------------
 
 with c6:
 
@@ -1171,22 +1088,16 @@ with c6:
             "Park accepted"
         )
 
-
         pa_tbl = park_accepted_table(
-
             fdf,
             cols,
         )
 
-
         if len(pa_tbl):
 
             st.dataframe(
-
                 pa_tbl,
-
                 use_container_width=True,
-
                 hide_index=True,
             )
 
@@ -1208,7 +1119,6 @@ spotlight_df = species_list(
 
 
 filter_key = (
-
     f"{selected_parks}|"
     f"{selected_categories}|"
     f"{search_text}"
@@ -1259,9 +1169,7 @@ def species_spotlight(
 
 
     n_pages = max(
-
         1,
-
         (
             total_sp
             + page_size
@@ -1288,33 +1196,28 @@ def species_spotlight(
 
 
     chunk = sp_df.iloc[
-
         start:
         start + page_size
     ]
 
 
     for col, (_, row) in zip(
-
         st.columns(
             max(
                 1,
                 len(chunk),
             )
         ),
-
         chunk.iterrows(),
     ):
 
         with col:
 
             species_card(
-
                 row.get(
                     "Scientific name",
                     "",
                 ),
-
                 row.get(
                     "Common names",
                     "",
@@ -1323,11 +1226,9 @@ def species_spotlight(
 
 
     st.caption(
-
         f"Showing "
         f"{start + 1}-"
         f"{min(start + page_size, total_sp)} "
-
         f"of {total_sp:,} species "
         f"(auto-rotating, photos via iNaturalist)"
     )
@@ -1367,19 +1268,13 @@ with st.container(
         "All records"
     )
 
-
     st.caption(
         f"{len(fdf):,} rows"
     )
 
-
     st.dataframe(
-
         fdf,
-
         use_container_width=True,
-
         height=430,
-
         hide_index=True,
     )
