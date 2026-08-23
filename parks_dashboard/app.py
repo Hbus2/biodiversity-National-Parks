@@ -61,24 +61,32 @@ inject_css()
 # CHART STYLING
 # ============================================================
 
-def style_fig(fig, height=320, show_legend=True):
+def style_fig(
+    fig,
+    height=320,
+    show_legend=True,
+):
 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+
         font=dict(
             color=TEXT,
             family="Segoe UI, sans-serif",
             size=12,
         ),
+
         margin=dict(
             l=10,
             r=10,
             t=10,
             b=10,
         ),
+
         height=height,
         showlegend=show_legend,
+
         legend=dict(
             bgcolor="rgba(0,0,0,0)",
             font=dict(
@@ -129,6 +137,11 @@ def render_donut(
 
     total = sum(counts)
 
+
+    # --------------------------------------------------------
+    # COLORS
+    # --------------------------------------------------------
+
     colors = []
     pi = 0
 
@@ -151,6 +164,10 @@ def render_donut(
             pi += 1
 
 
+    # --------------------------------------------------------
+    # DONUT CHART
+    # --------------------------------------------------------
+
     fig = px.pie(
         bd,
         names="label",
@@ -163,12 +180,14 @@ def render_donut(
     fig.update_traces(
         sort=False,
         textinfo="none",
+
         marker=dict(
             line=dict(
                 color="#FFFFFF",
                 width=2,
             )
         ),
+
         hovertemplate=(
             "%{label}: %{value:,} "
             "(%{percent})"
@@ -180,30 +199,37 @@ def render_donut(
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+
         showlegend=False,
+
         height=height,
+
         margin=dict(
             l=6,
             r=6,
             t=6,
             b=6,
         ),
+
         annotations=[
             dict(
                 text=f"<b>{total:,}</b>",
                 x=0.5,
                 y=0.54,
                 showarrow=False,
+
                 font=dict(
                     size=18,
                     color=TEXT,
                 ),
             ),
+
             dict(
                 text=center_units,
                 x=0.5,
                 y=0.43,
                 showarrow=False,
+
                 font=dict(
                     size=10,
                     color=MUTED,
@@ -242,13 +268,23 @@ def render_donut(
 
         rows += (
             f"<div class='lg-item'>"
-            f"<span class='lg-dot' "
-            f"style='background:{c}'></span>"
-            f"<span class='lg-label' "
-            f"title='{lab}'>{lab}</span>"
-            f"<span class='lg-pct'>"
+
+            f"<span "
+            f"class='lg-dot' "
+            f"style='background:{c}'>"
+            f"</span>"
+
+            f"<span "
+            f"class='lg-label' "
+            f"title='{lab}'>"
+            f"{lab}"
+            f"</span>"
+
+            f"<span "
+            f"class='lg-pct'>"
             f"{pct:.1f}%"
             f"</span>"
+
             f"</div>"
         )
 
@@ -260,14 +296,80 @@ def render_donut(
 
 
 # ============================================================
-# HORIZONTAL BAR CHART
+# ADAPTIVE HORIZONTAL BAR CHART
 # ============================================================
 
 def hbar(
     bd,
-    height=330,
+    height=None,
     color=ACCENT,
 ):
+    """
+    Adaptive horizontal bar chart.
+
+    The chart automatically changes height and bar thickness
+    depending on how many categories are currently displayed.
+    """
+
+    n_bars = len(
+        bd
+    )
+
+
+    # --------------------------------------------------------
+    # DYNAMIC CHART HEIGHT
+    # --------------------------------------------------------
+
+    if height is None:
+
+        if n_bars == 1:
+
+            height = 160
+
+        elif n_bars == 2:
+
+            height = 190
+
+        elif n_bars == 3:
+
+            height = 220
+
+        elif n_bars == 4:
+
+            height = 250
+
+        else:
+
+            height = min(
+                380,
+                120 + (n_bars * 38),
+            )
+
+
+    # --------------------------------------------------------
+    # DYNAMIC BAR THICKNESS
+    # --------------------------------------------------------
+
+    if n_bars == 1:
+
+        bar_width = 0.32
+
+    elif n_bars == 2:
+
+        bar_width = 0.40
+
+    elif n_bars <= 4:
+
+        bar_width = 0.52
+
+    else:
+
+        bar_width = 0.64
+
+
+    # --------------------------------------------------------
+    # CREATE BAR CHART
+    # --------------------------------------------------------
 
     fig = px.bar(
         bd,
@@ -275,7 +377,9 @@ def hbar(
         y="label",
         orientation="h",
         text="count",
-        color_discrete_sequence=[color],
+        color_discrete_sequence=[
+            color
+        ],
     )
 
 
@@ -284,15 +388,18 @@ def hbar(
         textposition="outside",
         textfont_color=TEXT,
         cliponaxis=False,
+        width=bar_width,
     )
 
 
     fig.update_layout(
+
         yaxis=dict(
             autorange="reversed",
             title=None,
             automargin=True,
         ),
+
         xaxis=dict(
             title=None,
             showticklabels=False,
@@ -322,10 +429,12 @@ def hbar(
     fig.update_layout(
         margin=dict(
             l=10,
-            r=46,
-            t=6,
-            b=6,
-        )
+            r=55,
+            t=10,
+            b=10,
+        ),
+
+        bargap=0.28,
     )
 
 
@@ -343,14 +452,14 @@ def park_map(map_df):
     Default:
         Esri World Physical Map
 
-    The default map provides:
+    Provides:
         - colored land
         - terrain / elevation
         - blue water
-        - very little road clutter
-        - blue biodiversity markers
+        - minimal road clutter
+        - interactive biodiversity markers
 
-    Optional map layers:
+    Optional layers:
         - Light Map
         - USGS Topographic
         - USGS Imagery + Topo
@@ -388,17 +497,23 @@ def park_map(map_df):
             center_lat,
             center_lon,
         ],
+
         zoom_start=zoom_start,
+
         tiles=None,
+
         control_scale=True,
+
         prefer_canvas=True,
+
         min_zoom=2,
+
         max_zoom=12,
     )
 
 
     # ========================================================
-    # DEFAULT COLORED PHYSICAL TERRAIN MAP
+    # DEFAULT PHYSICAL TERRAIN MAP
     # ========================================================
 
     folium.TileLayer(
@@ -408,19 +523,22 @@ def park_map(map_df):
             "World_Physical_Map/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
+
         attr=(
             "Esri | U.S. National Park Service "
             "| Natural Earth"
         ),
+
         name="Physical Terrain",
+
         overlay=False,
+
         control=True,
+
         show=True,
 
-        # Physical Map has limited native zoom.
-        # Leaflet enlarges the highest available tiles
-        # rather than requesting blank tiles.
         max_native_zoom=8,
+
         max_zoom=12,
     ).add_to(m)
 
@@ -431,15 +549,19 @@ def park_map(map_df):
 
     folium.TileLayer(
         tiles="CartoDB Positron",
+
         name="Light Map",
+
         overlay=False,
+
         control=True,
+
         show=False,
     ).add_to(m)
 
 
     # ========================================================
-    # OPTIONAL USGS TOPOGRAPHIC
+    # OPTIONAL USGS TOPOGRAPHIC MAP
     # ========================================================
 
     folium.TileLayer(
@@ -449,14 +571,20 @@ def park_map(map_df):
             "USGSTopo/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
+
         attr=(
             "U.S. Geological Survey "
             "| The National Map"
         ),
+
         name="USGS Topographic",
+
         overlay=False,
+
         control=True,
+
         show=False,
+
         max_zoom=16,
     ).add_to(m)
 
@@ -472,14 +600,20 @@ def park_map(map_df):
             "USGSImageryTopo/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
+
         attr=(
             "U.S. Geological Survey "
             "| The National Map"
         ),
+
         name="Imagery + Topo",
+
         overlay=False,
+
         control=True,
+
         show=False,
+
         max_zoom=16,
     ).add_to(m)
 
@@ -560,11 +694,18 @@ def park_map(map_df):
             "font-size:13px;"
             "min-width:190px;"
             "'>"
+
             f"<b>{park_name}</b>"
+
             "<br>"
-            "<span style='color:#6B7280;'>"
+
+            "<span "
+            "style='color:#6B7280;'>"
+
             f"{records:,} biodiversity records"
+
             "</span>"
+
             "</div>"
         )
 
@@ -576,7 +717,7 @@ def park_map(map_df):
 
 
         # ----------------------------------------------------
-        # BLUE PARK DOT
+        # BLUE PARK MARKER
         # ----------------------------------------------------
 
         folium.CircleMarker(
@@ -584,19 +725,27 @@ def park_map(map_df):
                 latitude,
                 longitude,
             ],
+
             radius=radius,
+
             tooltip=tooltip,
+
             popup=popup,
+
             color="#FFFFFF",
+
             weight=2,
+
             fill=True,
-            fill_color="#2176C9",
+
+            fill_color=ACCENT,
+
             fill_opacity=0.90,
         ).add_to(m)
 
 
     # ========================================================
-    # MAP LAYER SELECTOR
+    # MAP LAYER CONTROL
     # ========================================================
 
     folium.LayerControl(
@@ -619,12 +768,15 @@ def kpi_html(
 
     return (
         f'<div class="kpi-card">'
+
         f'<div class="kpi-label">'
         f'{label}'
         f'</div>'
+
         f'<div class="kpi-value">'
         f'{value}'
         f'</div>'
+
         f'</div>'
     )
 
@@ -706,11 +858,17 @@ def fetch_youtube_videos(
 
     params = {
         "part": "snippet",
+
         "q": query,
+
         "type": "video",
+
         "maxResults": max_results,
+
         "videoEmbeddable": "true",
+
         "order": "relevance",
+
         "key": api_key,
     }
 
@@ -849,14 +1007,17 @@ st.markdown(
     '<div class="dash-title">'
     'National Parks Biodiversity Dashboard'
     '</div>',
+
     unsafe_allow_html=True,
 )
 
 
 st.markdown(
     '<div class="dash-sub">'
-    'Species records across the 15 most visited U.S. National Parks'
+    'Species records across the 15 most visited '
+    'U.S. National Parks'
     '</div>',
+
     unsafe_allow_html=True,
 )
 
@@ -895,6 +1056,7 @@ st.markdown(
     )
 
     + "</div>",
+
     unsafe_allow_html=True,
 )
 
@@ -927,8 +1089,10 @@ with st.container(
         )
 
 
-        # Changing the selected park changes the component key.
-        # This forces the map to recenter/zoom to the selected park.
+        # ----------------------------------------------------
+        # FORCE MAP TO RECENTER WHEN ONE PARK IS SELECTED
+        # ----------------------------------------------------
+
         if len(selected_parks) == 1:
 
             map_key = (
@@ -938,14 +1102,20 @@ with st.container(
 
         else:
 
-            map_key = "national_parks_map_all"
+            map_key = (
+                "national_parks_map_all"
+            )
 
 
         st_folium(
             terrain_map,
+
             use_container_width=True,
+
             height=520,
+
             returned_objects=[],
+
             key=map_key,
         )
 
@@ -1089,6 +1259,7 @@ for col, group_name in zip(
 
             card_title(
                 group_name,
+
                 group_subs.get(
                     group_name
                 ),
@@ -1141,7 +1312,7 @@ if unassigned:
 
 
 # ============================================================
-# ORDER + ABUNDANCE
+# TAXONOMIC ORDER + ABUNDANCE
 # ============================================================
 
 oc, ac = st.columns(2)
@@ -1214,10 +1385,14 @@ with ac:
             st.plotly_chart(
                 hbar(
                     ab,
-                    height=360,
-                    color="#2E9E5B",
+
+                    # Same dashboard blue as the
+                    # other primary visual elements
+                    color=ACCENT,
                 ),
+
                 use_container_width=True,
+
                 config={
                     "displayModeBar": False
                 },
@@ -1265,8 +1440,11 @@ with c4:
 
             st.dataframe(
                 fam_tbl,
+
                 use_container_width=True,
+
                 hide_index=True,
+
                 height=330,
             )
 
@@ -1304,7 +1482,9 @@ with c5:
 
             st.dataframe(
                 nat_tbl,
+
                 use_container_width=True,
+
                 hide_index=True,
             )
 
@@ -1341,7 +1521,9 @@ with c6:
 
             st.dataframe(
                 pa_tbl,
+
                 use_container_width=True,
+
                 hide_index=True,
             )
 
@@ -1415,6 +1597,7 @@ def species_spotlight(
 
     n_pages = max(
         1,
+
         (
             total_sp
             + page_size
@@ -1453,6 +1636,7 @@ def species_spotlight(
                 len(chunk),
             )
         ),
+
         chunk.iterrows(),
     ):
 
@@ -1463,6 +1647,7 @@ def species_spotlight(
                     "Scientific name",
                     "",
                 ),
+
                 row.get(
                     "Common names",
                     "",
@@ -1496,6 +1681,7 @@ with st.container(
         "Species spotlight"
     )
 
+
     species_spotlight(
         spotlight_df
     )
@@ -1521,7 +1707,10 @@ with st.container(
 
     st.dataframe(
         fdf,
+
         use_container_width=True,
+
         height=430,
+
         hide_index=True,
     )
