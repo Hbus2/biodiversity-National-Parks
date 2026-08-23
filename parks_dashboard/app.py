@@ -66,23 +66,19 @@ def style_fig(fig, height=320, show_legend=True):
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-
         font=dict(
             color=TEXT,
             family="Segoe UI, sans-serif",
             size=12,
         ),
-
         margin=dict(
             l=10,
             r=10,
             t=10,
             b=10,
         ),
-
         height=height,
         showlegend=show_legend,
-
         legend=dict(
             bgcolor="rgba(0,0,0,0)",
             font=dict(
@@ -167,14 +163,12 @@ def render_donut(
     fig.update_traces(
         sort=False,
         textinfo="none",
-
         marker=dict(
             line=dict(
                 color="#FFFFFF",
                 width=2,
             )
         ),
-
         hovertemplate=(
             "%{label}: %{value:,} "
             "(%{percent})"
@@ -186,37 +180,30 @@ def render_donut(
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-
         showlegend=False,
-
         height=height,
-
         margin=dict(
             l=6,
             r=6,
             t=6,
             b=6,
         ),
-
         annotations=[
             dict(
                 text=f"<b>{total:,}</b>",
                 x=0.5,
                 y=0.54,
                 showarrow=False,
-
                 font=dict(
                     size=18,
                     color=TEXT,
                 ),
             ),
-
             dict(
                 text=center_units,
                 x=0.5,
                 y=0.43,
                 showarrow=False,
-
                 font=dict(
                     size=10,
                     color=MUTED,
@@ -255,23 +242,13 @@ def render_donut(
 
         rows += (
             f"<div class='lg-item'>"
-
-            f"<span "
-            f"class='lg-dot' "
-            f"style='background:{c}'>"
-            f"</span>"
-
-            f"<span "
-            f"class='lg-label' "
-            f"title='{lab}'>"
-            f"{lab}"
-            f"</span>"
-
-            f"<span "
-            f"class='lg-pct'>"
+            f"<span class='lg-dot' "
+            f"style='background:{c}'></span>"
+            f"<span class='lg-label' "
+            f"title='{lab}'>{lab}</span>"
+            f"<span class='lg-pct'>"
             f"{pct:.1f}%"
             f"</span>"
-
             f"</div>"
         )
 
@@ -311,13 +288,11 @@ def hbar(
 
 
     fig.update_layout(
-
         yaxis=dict(
             autorange="reversed",
             title=None,
             automargin=True,
         ),
-
         xaxis=dict(
             title=None,
             showticklabels=False,
@@ -363,22 +338,22 @@ def hbar(
 
 def park_map(map_df):
     """
-    Interactive Folium map.
+    Interactive National Parks map.
 
     Default:
-        Esri World Terrain Base
+        Esri World Physical Map
 
-    This provides:
-        - colored terrain
-        - mountains/elevation
-        - water
-        - minimal visual clutter
-        - no road-name-heavy default map
+    The default map provides:
+        - colored land
+        - terrain / elevation
+        - blue water
+        - very little road clutter
+        - blue biodiversity markers
 
-    Optional layers:
-        USGS Topographic
-        USGS Imagery + Topo
-        Light Map
+    Optional map layers:
+        - Light Map
+        - USGS Topographic
+        - USGS Imagery + Topo
     """
 
     # --------------------------------------------------------
@@ -405,7 +380,7 @@ def park_map(map_df):
 
 
     # --------------------------------------------------------
-    # CREATE BASE MAP
+    # CREATE MAP
     # --------------------------------------------------------
 
     m = folium.Map(
@@ -413,52 +388,58 @@ def park_map(map_df):
             center_lat,
             center_lon,
         ],
-
         zoom_start=zoom_start,
-
         tiles=None,
-
         control_scale=True,
-
         prefer_canvas=True,
-
         min_zoom=2,
-
-        max_zoom=13,
+        max_zoom=12,
     )
 
 
     # ========================================================
-    # DEFAULT COLORED TERRAIN
+    # DEFAULT COLORED PHYSICAL TERRAIN MAP
     # ========================================================
 
     folium.TileLayer(
         tiles=(
             "https://services.arcgisonline.com/"
             "ArcGIS/rest/services/"
-            "World_Terrain_Base/MapServer/tile/"
+            "World_Physical_Map/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
-
         attr=(
-            "Esri, USGS, NOAA "
-            "and contributors"
+            "Esri | U.S. National Park Service "
+            "| Natural Earth"
         ),
-
-        name="Terrain",
-
+        name="Physical Terrain",
         overlay=False,
-
         control=True,
-
         show=True,
 
-        max_zoom=13,
+        # Physical Map has limited native zoom.
+        # Leaflet enlarges the highest available tiles
+        # rather than requesting blank tiles.
+        max_native_zoom=8,
+        max_zoom=12,
     ).add_to(m)
 
 
     # ========================================================
-    # OPTIONAL USGS TOPOGRAPHIC MAP
+    # OPTIONAL LIGHT MAP
+    # ========================================================
+
+    folium.TileLayer(
+        tiles="CartoDB Positron",
+        name="Light Map",
+        overlay=False,
+        control=True,
+        show=False,
+    ).add_to(m)
+
+
+    # ========================================================
+    # OPTIONAL USGS TOPOGRAPHIC
     # ========================================================
 
     folium.TileLayer(
@@ -468,20 +449,14 @@ def park_map(map_df):
             "USGSTopo/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
-
         attr=(
             "U.S. Geological Survey "
             "| The National Map"
         ),
-
         name="USGS Topographic",
-
         overlay=False,
-
         control=True,
-
         show=False,
-
         max_zoom=16,
     ).add_to(m)
 
@@ -497,38 +472,15 @@ def park_map(map_df):
             "USGSImageryTopo/MapServer/tile/"
             "{z}/{y}/{x}"
         ),
-
         attr=(
             "U.S. Geological Survey "
             "| The National Map"
         ),
-
         name="Imagery + Topo",
-
         overlay=False,
-
         control=True,
-
         show=False,
-
         max_zoom=16,
-    ).add_to(m)
-
-
-    # ========================================================
-    # OPTIONAL LIGHT MAP
-    # ========================================================
-
-    folium.TileLayer(
-        tiles="CartoDB Positron",
-
-        name="Light Map",
-
-        overlay=False,
-
-        control=True,
-
-        show=False,
     ).add_to(m)
 
 
@@ -587,7 +539,7 @@ def park_map(map_df):
 
 
         # ----------------------------------------------------
-        # HOVER TOOLTIP
+        # HOVER INFORMATION
         # ----------------------------------------------------
 
         tooltip = (
@@ -608,18 +560,11 @@ def park_map(map_df):
             "font-size:13px;"
             "min-width:190px;"
             "'>"
-
             f"<b>{park_name}</b>"
-
             "<br>"
-
-            "<span "
-            "style='color:#6B7280;'>"
-
+            "<span style='color:#6B7280;'>"
             f"{records:,} biodiversity records"
-
             "</span>"
-
             "</div>"
         )
 
@@ -631,7 +576,7 @@ def park_map(map_df):
 
 
         # ----------------------------------------------------
-        # PARK DOT
+        # BLUE PARK DOT
         # ----------------------------------------------------
 
         folium.CircleMarker(
@@ -639,27 +584,19 @@ def park_map(map_df):
                 latitude,
                 longitude,
             ],
-
             radius=radius,
-
             tooltip=tooltip,
-
             popup=popup,
-
             color="#FFFFFF",
-
             weight=2,
-
             fill=True,
-
             fill_color="#2176C9",
-
             fill_opacity=0.90,
         ).add_to(m)
 
 
     # ========================================================
-    # LAYER CONTROL
+    # MAP LAYER SELECTOR
     # ========================================================
 
     folium.LayerControl(
@@ -682,15 +619,12 @@ def kpi_html(
 
     return (
         f'<div class="kpi-card">'
-
         f'<div class="kpi-label">'
         f'{label}'
         f'</div>'
-
         f'<div class="kpi-value">'
         f'{value}'
         f'</div>'
-
         f'</div>'
     )
 
@@ -772,17 +706,11 @@ def fetch_youtube_videos(
 
     params = {
         "part": "snippet",
-
         "q": query,
-
         "type": "video",
-
         "maxResults": max_results,
-
         "videoEmbeddable": "true",
-
         "order": "relevance",
-
         "key": api_key,
     }
 
@@ -921,7 +849,6 @@ st.markdown(
     '<div class="dash-title">'
     'National Parks Biodiversity Dashboard'
     '</div>',
-
     unsafe_allow_html=True,
 )
 
@@ -930,7 +857,6 @@ st.markdown(
     '<div class="dash-sub">'
     'Species records across U.S. National Parks'
     '</div>',
-
     unsafe_allow_html=True,
 )
 
@@ -969,7 +895,6 @@ st.markdown(
     )
 
     + "</div>",
-
     unsafe_allow_html=True,
 )
 
@@ -984,7 +909,7 @@ with st.container(
 
     card_title(
         "Park locations",
-        "Interactive terrain map",
+        "Interactive physical terrain map",
     )
 
 
@@ -1002,16 +927,26 @@ with st.container(
         )
 
 
+        # Changing the selected park changes the component key.
+        # This forces the map to recenter/zoom to the selected park.
+        if len(selected_parks) == 1:
+
+            map_key = (
+                "national_parks_map_"
+                + selected_parks[0]
+            )
+
+        else:
+
+            map_key = "national_parks_map_all"
+
+
         st_folium(
             terrain_map,
-
             use_container_width=True,
-
             height=520,
-
             returned_objects=[],
-
-            key="national_parks_map",
+            key=map_key,
         )
 
 
@@ -1282,9 +1217,7 @@ with ac:
                     height=360,
                     color="#2E9E5B",
                 ),
-
                 use_container_width=True,
-
                 config={
                     "displayModeBar": False
                 },
@@ -1482,7 +1415,6 @@ def species_spotlight(
 
     n_pages = max(
         1,
-
         (
             total_sp
             + page_size
@@ -1531,7 +1463,6 @@ def species_spotlight(
                     "Scientific name",
                     "",
                 ),
-
                 row.get(
                     "Common names",
                     "",
@@ -1564,7 +1495,6 @@ with st.container(
     card_title(
         "Species spotlight"
     )
-
 
     species_spotlight(
         spotlight_df
