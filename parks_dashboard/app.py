@@ -648,9 +648,7 @@ search_text = st.sidebar.text_input(
 
 st.sidebar.caption(
 
-    "Empty filters show everything. "
-    "Search matches both SciName "
-    "and CommonNames."
+  "Search by park or species to view more detailed information."
 )
 
 
