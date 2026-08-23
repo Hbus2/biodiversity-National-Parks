@@ -50,21 +50,6 @@ st.set_page_config(
 inject_css()
 
 
-# ============================================================
-# SIDEBAR NAVIGATION
-# ============================================================
-
-st.sidebar.page_link(
-    "app.py",
-    label="Dashboard",
-)
-
-st.sidebar.page_link(
-    "pages/1_Species_Gallery.py",
-    label="Species Gallery",
-)
-
-st.sidebar.divider()
 
 
 # ============================================================
@@ -449,37 +434,11 @@ def park_map(map_df):
 # KPI CARD
 # ============================================================
 
-def kpi_html(
-    label,
-    value,
-    icon,
-    icon_bg,
-    icon_fg="#FFFFFF",
-):
-
+def kpi_html(label, value):
     return (
-
         f'<div class="kpi-card">'
-
-        f'<div '
-        f'class="kpi-icon" '
-        f'style="background:{icon_bg};'
-        f'color:{icon_fg};">'
-        f'{icon}'
-        f'</div>'
-
-        f'<div>'
-
-        f'<div class="kpi-label">'
-        f'{label}'
-        f'</div>'
-
-        f'<div class="kpi-value">'
-        f'{value}'
-        f'</div>'
-
-        f'</div>'
-
+        f'<div class="kpi-label">{label}</div>'
+        f'<div class="kpi-value">{value}</div>'
         f'</div>'
     )
 
@@ -745,39 +704,12 @@ total, n_parks, n_species, pct_accepted = kpis(
 
 
 st.markdown(
-
     '<div class="kpi-row">'
-
-    + kpi_html(
-        "Total records",
-        f"{total:,}",
-        "&#9638;",
-        "#2176C9",
-    )
-
-    + kpi_html(
-        "National parks",
-        f"{n_parks:,}",
-        "&#11042;",
-        "#6952D2",
-    )
-
-    + kpi_html(
-        "Species",
-        f"{n_species:,}",
-        "&#10022;",
-        "#2D8AE1",
-    )
-
-    + kpi_html(
-        "Park-accepted",
-        f"{pct_accepted:.0f}%",
-        "&#10003;",
-        "#2E9E5B",
-    )
-
+    + kpi_html("Total records", f"{total:,}")
+    + kpi_html("National parks", f"{n_parks:,}")
+    + kpi_html("Species", f"{n_species:,}")
+    + kpi_html("Park-accepted", f"{pct_accepted:.0f}%")
     + "</div>",
-
     unsafe_allow_html=True,
 )
 
