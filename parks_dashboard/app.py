@@ -400,7 +400,7 @@ def park_map(map_df):
 
     fig.update_layout(
 
-        mapbox_style="carto-positron",
+        mapbox_style="open-street-map",
 
         mapbox_center={
             "lat": 39.5,
