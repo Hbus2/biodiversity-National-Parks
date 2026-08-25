@@ -1,15 +1,22 @@
 """
 pages/1_Species_Gallery.py
 --------------------------
+
 A full-page species photo gallery.
 
 Filter by park / category, search by name,
-and page through species shown as a photo grid.
+or use AI to search naturally with phrases like:
+
+    "birds in Grand Canyon"
+    "mammals in Yellowstone"
+    "bears in Yosemite"
 
 Images are provided through iNaturalist.
 """
 
+import json
 import streamlit as st
+from openai import OpenAI
 
 from data_utils import (
     apply_filters,
@@ -36,18 +43,216 @@ st.set_page_config(
 
 inject_css()
 
-# Sidebar navigation
+
+# ============================================================
+# OPENAI
+# ============================================================
+
+@st.cache_resource
+def get_openai_client():
+    """
+    Creates one reusable OpenAI client.
+
+    The API key is loaded from:
+    .streamlit/secrets.toml
+    """
+
+    return OpenAI(
+        api_key=st.secrets["OPENAI_API_KEY"]
+    )
+
+
+def interpret_ai_search(
+    query,
+    park_options,
+    category_options,
+):
+    """
+    Convert natural-language searches into the filters
+    already used by the Species Gallery.
+
+    Example:
+
+        "birds in Grand Canyon"
+
+    becomes:
+
+        {
+            "park": "Grand Canyon National Park",
+            "category": "Bird",
+            "species": None
+        }
+    """
+
+    client = get_openai_client()
+
+    park_text = "\n".join(
+        f"- {park}"
+        for park in park_options
+    )
+
+    category_text = "\n".join(
+        f"- {category}"
+        for category in category_options
+    )
+
+    prompt = f"""
+You are a search interpreter for a biodiversity application
+covering 15 highly visited U.S. National Parks.
+
+Your ONLY job is to translate the user's natural-language
+request into filters used by the application.
+
+AVAILABLE PARKS:
+
+{park_text}
+
+AVAILABLE SPECIES CATEGORIES:
+
+{category_text}
+
+
+RULES:
+
+1. The park must match one of the AVAILABLE PARKS exactly.
+
+2. The category must match one of the AVAILABLE SPECIES
+   CATEGORIES exactly.
+
+3. Understand casual wording and abbreviations.
+
+   Examples:
+
+   "Grand Canyon"
+   should match the appropriate Grand Canyon park.
+
+   "Yellowstone"
+   should match Yellowstone National Park.
+
+4. Understand singular and plural animal categories.
+
+   Examples:
+
+   birds -> appropriate bird category
+   mammals -> appropriate mammal category
+   reptiles -> appropriate reptile category
+   fish -> appropriate fish category
+
+5. If the user specifies an individual animal or species,
+   put a concise searchable term in "species".
+
+   Examples:
+
+   "bears in Yellowstone"
+   species = "bear"
+
+   "eagles in Grand Canyon"
+   species = "eagle"
+
+6. Do NOT invent parks.
+
+7. Do NOT invent categories.
+
+8. If the user does not specify a park, use null.
+
+9. If the user does not specify a category, use null.
+
+10. If the user does not specify an individual species,
+    use null.
+
+Return ONLY valid JSON.
+
+Use exactly this format:
+
+{{
+    "park": null,
+    "category": null,
+    "species": null
+}}
+
+USER SEARCH:
+
+"{query}"
+"""
+
+    response = client.responses.create(
+        model="gpt-5.6-luna",
+        input=prompt,
+        max_output_tokens=120,
+    )
+
+    raw_response = response.output_text.strip()
+
+    # Extra protection in case the model surrounds
+    # the JSON with markdown formatting.
+    raw_response = (
+        raw_response
+        .replace("```json", "")
+        .replace("```JSON", "")
+        .replace("```", "")
+        .strip()
+    )
+
+    result = json.loads(
+        raw_response
+    )
+
+    park = result.get(
+        "park"
+    )
+
+    category = result.get(
+        "category"
+    )
+
+    species = result.get(
+        "species"
+    )
+
+
+    # --------------------------------------------------------
+    # VALIDATE AI RESULTS AGAINST THE REAL DATASET
+    # --------------------------------------------------------
+
+    if park not in park_options:
+        park = None
+
+    if category not in category_options:
+        category = None
+
+    if species is not None:
+        species = str(
+            species
+        ).strip()
+
+        if not species:
+            species = None
+
+
+    return {
+        "park": park,
+        "category": category,
+        "species": species,
+    }
+
+
+# ============================================================
+# SIDEBAR NAVIGATION
+# ============================================================
+
 st.sidebar.page_link(
     "app.py",
-    label="Homepage"
+    label="Homepage",
 )
 
 st.sidebar.page_link(
     "pages/1_Species_Gallery.py",
-    label="Species Gallery"
+    label="Species Gallery",
 )
 
 st.sidebar.divider()
+
+
 # ============================================================
 # DATA
 # ============================================================
@@ -70,6 +275,319 @@ except FileNotFoundError:
 
 
 # ============================================================
+# FILTER OPTIONS
+# ============================================================
+
+park_options = unique_values(
+    df,
+    cols["park_name"],
+)
+
+category_options = unique_values(
+    df,
+    cols["category"],
+)
+
+
+# Convert to normal lists if needed
+park_options = list(
+    park_options
+)
+
+category_options = list(
+    category_options
+)
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+if "gallery_park_filter" not in st.session_state:
+    st.session_state[
+        "gallery_park_filter"
+    ] = []
+
+if "gallery_category_filter" not in st.session_state:
+    st.session_state[
+        "gallery_category_filter"
+    ] = []
+
+if "gallery_species_search" not in st.session_state:
+    st.session_state[
+        "gallery_species_search"
+    ] = ""
+
+if "ai_species_query" not in st.session_state:
+    st.session_state[
+        "ai_species_query"
+    ] = ""
+
+if "gallery_page" not in st.session_state:
+    st.session_state[
+        "gallery_page"
+    ] = 1
+
+if "ai_search_error" not in st.session_state:
+    st.session_state[
+        "ai_search_error"
+    ] = ""
+
+
+# ============================================================
+# AI SEARCH CALLBACK
+# ============================================================
+
+def run_ai_search():
+
+    query = st.session_state.get(
+        "ai_species_query",
+        "",
+    ).strip()
+
+    if not query:
+
+        st.session_state[
+            "ai_search_error"
+        ] = (
+            "Enter something to search for first."
+        )
+
+        return
+
+
+    try:
+
+        result = interpret_ai_search(
+            query,
+            park_options,
+            category_options,
+        )
+
+
+        # --------------------------------------------
+        # UPDATE EXISTING GALLERY FILTERS
+        # --------------------------------------------
+
+        if result["park"]:
+
+            st.session_state[
+                "gallery_park_filter"
+            ] = [
+                result["park"]
+            ]
+
+        else:
+
+            st.session_state[
+                "gallery_park_filter"
+            ] = []
+
+
+        if result["category"]:
+
+            st.session_state[
+                "gallery_category_filter"
+            ] = [
+                result["category"]
+            ]
+
+        else:
+
+            st.session_state[
+                "gallery_category_filter"
+            ] = []
+
+
+        if result["species"]:
+
+            st.session_state[
+                "gallery_species_search"
+            ] = result["species"]
+
+        else:
+
+            st.session_state[
+                "gallery_species_search"
+            ] = ""
+
+
+        # Always go back to page 1
+        # after a new AI search.
+        st.session_state[
+            "gallery_page"
+        ] = 1
+
+
+        # Save what AI understood
+        st.session_state[
+            "last_ai_search"
+        ] = result
+
+
+        st.session_state[
+            "ai_search_error"
+        ] = ""
+
+
+    except json.JSONDecodeError:
+
+        st.session_state[
+            "ai_search_error"
+        ] = (
+            "The AI search returned an unexpected "
+            "response. Please try again."
+        )
+
+
+    except Exception as error:
+
+        st.session_state[
+            "ai_search_error"
+        ] = (
+            f"AI search could not be completed: "
+            f"{error}"
+        )
+
+
+# ============================================================
+# CLEAR SEARCH CALLBACK
+# ============================================================
+
+def clear_gallery_search():
+
+    st.session_state[
+        "gallery_park_filter"
+    ] = []
+
+    st.session_state[
+        "gallery_category_filter"
+    ] = []
+
+    st.session_state[
+        "gallery_species_search"
+    ] = ""
+
+    st.session_state[
+        "ai_species_query"
+    ] = ""
+
+    st.session_state[
+        "gallery_page"
+    ] = 1
+
+    st.session_state[
+        "ai_search_error"
+    ] = ""
+
+    if (
+        "last_ai_search"
+        in st.session_state
+    ):
+
+        del st.session_state[
+            "last_ai_search"
+        ]
+
+
+# ============================================================
+# AI SIDEBAR SEARCH
+# ============================================================
+
+st.sidebar.markdown(
+    "## Find Species with AI"
+)
+
+st.sidebar.caption(
+    "Search naturally instead of choosing filters."
+)
+
+st.sidebar.text_input(
+    "What would you like to find?",
+    placeholder="Try: birds in Grand Canyon",
+    key="ai_species_query",
+)
+
+
+st.sidebar.button(
+    "Search with AI",
+    use_container_width=True,
+    on_click=run_ai_search,
+)
+
+
+# ============================================================
+# AI SEARCH RESULT
+# ============================================================
+
+if st.session_state.get(
+    "ai_search_error"
+):
+
+    st.sidebar.error(
+        st.session_state[
+            "ai_search_error"
+        ]
+    )
+
+
+if (
+    "last_ai_search"
+    in st.session_state
+):
+
+    result = st.session_state[
+        "last_ai_search"
+    ]
+
+    understood = []
+
+    if result.get(
+        "park"
+    ):
+
+        understood.append(
+            result["park"]
+        )
+
+    if result.get(
+        "category"
+    ):
+
+        understood.append(
+            result["category"]
+        )
+
+    if result.get(
+        "species"
+    ):
+
+        understood.append(
+            f'Species: {result["species"]}'
+        )
+
+
+    if understood:
+
+        st.sidebar.success(
+            "AI understood:\n\n"
+            + "\n\n".join(
+                understood
+            )
+        )
+
+
+st.sidebar.button(
+    "Clear Search",
+    use_container_width=True,
+    on_click=clear_gallery_search,
+)
+
+
+st.sidebar.divider()
+
+
+# ============================================================
 # SIDEBAR FILTERS
 # ============================================================
 
@@ -80,27 +598,24 @@ st.sidebar.markdown(
 
 selected_parks = st.sidebar.multiselect(
     "Park name",
-    unique_values(
-        df,
-        cols["park_name"],
-    ),
+    park_options,
     placeholder="All parks",
+    key="gallery_park_filter",
 )
 
 
 selected_categories = st.sidebar.multiselect(
     "Category",
-    unique_values(
-        df,
-        cols["category"],
-    ),
+    category_options,
     placeholder="All categories",
+    key="gallery_category_filter",
 )
 
 
 search_text = st.sidebar.text_input(
     "Search species",
     placeholder="Scientific or common name...",
+    key="gallery_species_search",
 )
 
 
@@ -144,8 +659,8 @@ st.markdown(
 st.markdown(
     '<div class="dash-sub">'
     'Photos via iNaturalist. '
-    'Use the filters and search on the left '
-    'to narrow the species shown.'
+    'Use the filters on the left or describe '
+    'what you want to find with AI.'
     '</div>',
     unsafe_allow_html=True,
 )
@@ -156,6 +671,7 @@ st.markdown(
 # ============================================================
 
 PER_ROW = 5
+
 PER_PAGE = 25
 
 total = len(
@@ -184,6 +700,22 @@ n_pages = max(
 
 
 # ============================================================
+# KEEP PAGE NUMBER VALID
+# ============================================================
+
+if (
+    st.session_state[
+        "gallery_page"
+    ]
+    > n_pages
+):
+
+    st.session_state[
+        "gallery_page"
+    ] = 1
+
+
+# ============================================================
 # PAGE SELECTOR
 # ============================================================
 
@@ -198,8 +730,8 @@ with top_r:
         "Page",
         min_value=1,
         max_value=n_pages,
-        value=1,
         step=1,
+        key="gallery_page",
     )
 
 
@@ -240,6 +772,7 @@ chunk = sp_df.iloc[
 
 
 rows = [
+
     chunk.iloc[
         i:i + PER_ROW
     ]
@@ -249,6 +782,7 @@ rows = [
         len(chunk),
         PER_ROW,
     )
+
 ]
 
 
@@ -275,7 +809,6 @@ for row_df in rows:
                         "Scientific name",
                         "",
                     ),
-
                     row.get(
                         "Common names",
                         "",
