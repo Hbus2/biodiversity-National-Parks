@@ -221,6 +221,7 @@ USER SEARCH:
         category = None
 
     if species is not None:
+
         species = str(
             species
         ).strip()
@@ -290,6 +291,7 @@ category_options = unique_values(
 
 
 # Convert to normal lists if needed
+
 park_options = list(
     park_options
 )
@@ -304,31 +306,42 @@ category_options = list(
 # ============================================================
 
 if "gallery_park_filter" not in st.session_state:
+
     st.session_state[
         "gallery_park_filter"
     ] = []
 
+
 if "gallery_category_filter" not in st.session_state:
+
     st.session_state[
         "gallery_category_filter"
     ] = []
 
+
 if "gallery_species_search" not in st.session_state:
+
     st.session_state[
         "gallery_species_search"
     ] = ""
 
+
 if "ai_species_query" not in st.session_state:
+
     st.session_state[
         "ai_species_query"
     ] = ""
 
+
 if "gallery_page" not in st.session_state:
+
     st.session_state[
         "gallery_page"
     ] = 1
 
+
 if "ai_search_error" not in st.session_state:
+
     st.session_state[
         "ai_search_error"
     ] = ""
@@ -344,6 +357,7 @@ def run_ai_search():
         "ai_species_query",
         "",
     ).strip()
+
 
     if not query:
 
@@ -365,9 +379,9 @@ def run_ai_search():
         )
 
 
-        # --------------------------------------------
+        # ----------------------------------------------------
         # UPDATE EXISTING GALLERY FILTERS
-        # --------------------------------------------
+        # ----------------------------------------------------
 
         if result["park"]:
 
@@ -412,18 +426,14 @@ def run_ai_search():
             ] = ""
 
 
-        # Always go back to page 1
-        # after a new AI search.
+        # Return to page 1 after a new search
+
         st.session_state[
             "gallery_page"
         ] = 1
 
 
-        # Save what AI understood
-        st.session_state[
-            "last_ai_search"
-        ] = result
-
+        # Clear old error messages
 
         st.session_state[
             "ai_search_error"
@@ -480,15 +490,6 @@ def clear_gallery_search():
         "ai_search_error"
     ] = ""
 
-    if (
-        "last_ai_search"
-        in st.session_state
-    ):
-
-        del st.session_state[
-            "last_ai_search"
-        ]
-
 
 # ============================================================
 # AI SIDEBAR SEARCH
@@ -514,8 +515,11 @@ st.sidebar.button(
 
 
 # ============================================================
-# AI SEARCH RESULT
+# AI ERROR MESSAGE
 # ============================================================
+
+# Successful searches happen silently.
+# This only appears when something goes wrong.
 
 if st.session_state.get(
     "ai_search_error"
@@ -526,52 +530,6 @@ if st.session_state.get(
             "ai_search_error"
         ]
     )
-
-
-if (
-    "last_ai_search"
-    in st.session_state
-):
-
-    result = st.session_state[
-        "last_ai_search"
-    ]
-
-    understood = []
-
-    if result.get(
-        "park"
-    ):
-
-        understood.append(
-            result["park"]
-        )
-
-    if result.get(
-        "category"
-    ):
-
-        understood.append(
-            result["category"]
-        )
-
-    if result.get(
-        "species"
-    ):
-
-        understood.append(
-            f'Species: {result["species"]}'
-        )
-
-
-    if understood:
-
-        st.sidebar.success(
-            "AI understood:\n\n"
-            + "\n\n".join(
-                understood
-            )
-        )
 
 
 st.sidebar.button(
@@ -656,9 +614,85 @@ st.markdown(
 st.markdown(
     '<div class="dash-sub">'
     'Photos via iNaturalist. '
-    'Use the filters on the left or describe '
-    'what you want to find with AI.'
+    'Use the filters on the left '
+    'to narrow the species shown.'
     '</div>',
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# PARK BANNER
+# ============================================================
+
+if len(selected_parks) == 1:
+
+    park_banner_text = selected_parks[0]
+
+    park_banner_subtitle = (
+        "Currently viewing"
+    )
+
+
+elif len(selected_parks) > 1:
+
+    park_banner_text = (
+        f"{len(selected_parks)} National Parks Selected"
+    )
+
+    park_banner_subtitle = (
+        "Currently viewing"
+    )
+
+
+else:
+
+    park_banner_text = (
+        "All National Parks"
+    )
+
+    park_banner_subtitle = (
+        "Currently viewing"
+    )
+
+
+st.markdown(
+    f"""
+    <div style="
+        background: linear-gradient(
+            90deg,
+            #EAF4FC 0%,
+            #F7FBFE 100%
+        );
+        border: 1px solid #C9E1F4;
+        border-radius: 14px;
+        padding: 18px 24px;
+        margin-top: 20px;
+        margin-bottom: 22px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    ">
+
+        <div style="
+            font-size: 13px;
+            font-weight: 500;
+            color: #5F6B75;
+            margin-bottom: 3px;
+            letter-spacing: 0.2px;
+        ">
+            {park_banner_subtitle}
+        </div>
+
+        <div style="
+            font-size: 26px;
+            line-height: 1.25;
+            font-weight: 700;
+            color: #1F2329;
+        ">
+            {park_banner_text}
+        </div>
+
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
