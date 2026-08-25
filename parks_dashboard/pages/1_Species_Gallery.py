@@ -498,8 +498,6 @@ st.sidebar.markdown(
     "## Find Species with AI"
 )
 
-st.sidebar.caption(
-    "Search naturally instead of choosing filters."
 )
 
 st.sidebar.text_input(
