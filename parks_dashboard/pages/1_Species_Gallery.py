@@ -498,7 +498,6 @@ st.sidebar.markdown(
     "## Find Species with AI"
 )
 
-)
 
 st.sidebar.text_input(
     "What would you like to find?",
