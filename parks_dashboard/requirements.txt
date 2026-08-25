@@ -5,3 +5,4 @@ requests>=2.28
 folium
 streamlit-folium
 xyzservices
+openai
