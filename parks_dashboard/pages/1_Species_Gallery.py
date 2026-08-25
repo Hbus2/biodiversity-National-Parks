@@ -15,6 +15,7 @@ Images are provided through iNaturalist.
 """
 
 import json
+import html
 import streamlit as st
 from openai import OpenAI
 
@@ -111,7 +112,6 @@ AVAILABLE SPECIES CATEGORIES:
 
 {category_text}
 
-
 RULES:
 
 1. The park must match one of the AVAILABLE PARKS exactly.
@@ -121,33 +121,33 @@ RULES:
 
 3. Understand casual wording and abbreviations.
 
-   Examples:
+Examples:
 
-   "Grand Canyon"
-   should match the appropriate Grand Canyon park.
+"Grand Canyon"
+should match the appropriate Grand Canyon park.
 
-   "Yellowstone"
-   should match Yellowstone National Park.
+"Yellowstone"
+should match Yellowstone National Park.
 
 4. Understand singular and plural animal categories.
 
-   Examples:
+Examples:
 
-   birds -> appropriate bird category
-   mammals -> appropriate mammal category
-   reptiles -> appropriate reptile category
-   fish -> appropriate fish category
+birds -> appropriate bird category
+mammals -> appropriate mammal category
+reptiles -> appropriate reptile category
+fish -> appropriate fish category
 
 5. If the user specifies an individual animal or species,
    put a concise searchable term in "species".
 
-   Examples:
+Examples:
 
-   "bears in Yellowstone"
-   species = "bear"
+"bears in Yellowstone"
+species = "bear"
 
-   "eagles in Grand Canyon"
-   species = "eagle"
+"eagles in Grand Canyon"
+species = "eagle"
 
 6. Do NOT invent parks.
 
@@ -183,8 +183,6 @@ USER SEARCH:
 
     raw_response = response.output_text.strip()
 
-    # Extra protection in case the model surrounds
-    # the JSON with markdown formatting.
     raw_response = (
         raw_response
         .replace("```json", "")
@@ -211,7 +209,7 @@ USER SEARCH:
 
 
     # --------------------------------------------------------
-    # VALIDATE AI RESULTS AGAINST THE REAL DATASET
+    # VALIDATE AI RESULTS AGAINST REAL DATASET VALUES
     # --------------------------------------------------------
 
     if park not in park_options:
@@ -288,9 +286,6 @@ category_options = unique_values(
     df,
     cols["category"],
 )
-
-
-# Convert to normal lists if needed
 
 park_options = list(
     park_options
@@ -380,7 +375,7 @@ def run_ai_search():
 
 
         # ----------------------------------------------------
-        # UPDATE EXISTING GALLERY FILTERS
+        # UPDATE PARK FILTER
         # ----------------------------------------------------
 
         if result["park"]:
@@ -398,6 +393,10 @@ def run_ai_search():
             ] = []
 
 
+        # ----------------------------------------------------
+        # UPDATE CATEGORY FILTER
+        # ----------------------------------------------------
+
         if result["category"]:
 
             st.session_state[
@@ -413,6 +412,10 @@ def run_ai_search():
             ] = []
 
 
+        # ----------------------------------------------------
+        # UPDATE SPECIES SEARCH
+        # ----------------------------------------------------
+
         if result["species"]:
 
             st.session_state[
@@ -426,14 +429,14 @@ def run_ai_search():
             ] = ""
 
 
-        # Return to page 1 after a new search
+        # Always return to page 1 after a new search
 
         st.session_state[
             "gallery_page"
         ] = 1
 
 
-        # Clear old error messages
+        # Successful searches happen silently
 
         st.session_state[
             "ai_search_error"
@@ -517,9 +520,6 @@ st.sidebar.button(
 # ============================================================
 # AI ERROR MESSAGE
 # ============================================================
-
-# Successful searches happen silently.
-# This only appears when something goes wrong.
 
 if st.session_state.get(
     "ai_search_error"
@@ -629,19 +629,11 @@ if len(selected_parks) == 1:
 
     park_banner_text = selected_parks[0]
 
-    park_banner_subtitle = (
-        "Currently viewing"
-    )
-
 
 elif len(selected_parks) > 1:
 
     park_banner_text = (
         f"{len(selected_parks)} National Parks Selected"
-    )
-
-    park_banner_subtitle = (
-        "Currently viewing"
     )
 
 
@@ -651,48 +643,52 @@ else:
         "All National Parks"
     )
 
-    park_banner_subtitle = (
-        "Currently viewing"
-    )
+
+# Escape text before inserting into HTML
+
+park_banner_text = html.escape(
+    str(park_banner_text)
+)
+
+
+# IMPORTANT:
+# This HTML is intentionally created without indented/newline
+# HTML blocks. That prevents Streamlit/Markdown from treating
+# the inner DIV tags as a code block.
+
+park_banner_html = (
+    '<div style="'
+    'background:linear-gradient(90deg,#EAF4FC 0%,#F7FBFE 100%);'
+    'border:1px solid #C9E1F4;'
+    'border-radius:14px;'
+    'padding:18px 24px;'
+    'margin-top:20px;'
+    'margin-bottom:22px;'
+    'box-shadow:0 1px 2px rgba(0,0,0,0.03);'
+    '">'
+    '<div style="'
+    'font-size:13px;'
+    'font-weight:500;'
+    'color:#5F6B75;'
+    'margin-bottom:3px;'
+    'letter-spacing:0.2px;'
+    '">'
+    'Currently viewing'
+    '</div>'
+    '<div style="'
+    'font-size:26px;'
+    'line-height:1.25;'
+    'font-weight:700;'
+    'color:#1F2329;'
+    '">'
+    f'{park_banner_text}'
+    '</div>'
+    '</div>'
+)
 
 
 st.markdown(
-    f"""
-    <div style="
-        background: linear-gradient(
-            90deg,
-            #EAF4FC 0%,
-            #F7FBFE 100%
-        );
-        border: 1px solid #C9E1F4;
-        border-radius: 14px;
-        padding: 18px 24px;
-        margin-top: 20px;
-        margin-bottom: 22px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-    ">
-
-        <div style="
-            font-size: 13px;
-            font-weight: 500;
-            color: #5F6B75;
-            margin-bottom: 3px;
-            letter-spacing: 0.2px;
-        ">
-            {park_banner_subtitle}
-        </div>
-
-        <div style="
-            font-size: 26px;
-            line-height: 1.25;
-            font-weight: 700;
-            color: #1F2329;
-        ">
-            {park_banner_text}
-        </div>
-
-    </div>
-    """,
+    park_banner_html,
     unsafe_allow_html=True,
 )
 
