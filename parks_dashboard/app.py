@@ -13,7 +13,7 @@ import folium
 import plotly.express as px
 import requests
 import streamlit as st
-
+from nps_api import get_nps_park_data, NPS_PARK_CODES
 from streamlit_folium import st_folium
 
 from data_utils import (
