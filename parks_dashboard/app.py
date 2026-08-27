@@ -7,6 +7,7 @@ Run:
     streamlit run app.py
 """
 
+import html
 import math
 
 import folium
@@ -457,6 +458,108 @@ def hbar(
 # INTERACTIVE NATIONAL PARK MAP
 # ============================================================
 
+# Complete fallback mapping for the 15 parks used by this project.
+# We still import NPS_PARK_CODES from nps_api.py, but keeping this
+# fallback here prevents a missing dictionary entry or small name
+# mismatch from causing the hover photo to disappear.
+DEFAULT_NPS_PARK_CODES = {
+    "Acadia National Park": "acad",
+    "Bryce Canyon National Park": "brca",
+    "Cuyahoga Valley National Park": "cuva",
+    "Glacier National Park": "glac",
+    "Grand Canyon National Park": "grca",
+    "Grand Teton National Park": "grte",
+    "Great Smoky Mountains National Park": "grsm",
+    "Hot Springs National Park": "hosp",
+    "Indiana Dunes National Park": "indu",
+    "Joshua Tree National Park": "jotr",
+    "Olympic National Park": "olym",
+    "Rocky Mountain National Park": "romo",
+    "Yellowstone National Park": "yell",
+    "Yosemite National Park": "yose",
+    "Zion National Park": "zion",
+}
+
+
+def normalize_park_name(value):
+    """Normalize park names so small formatting differences still match."""
+
+    value = str(value or "").strip().lower()
+    value = value.replace("&", "and")
+    value = value.replace("–", "-").replace("—", "-")
+    value = " ".join(value.split())
+    return value
+
+
+def resolve_nps_park_code(park_name):
+    """Return an NPS park code for a park name, using tolerant matching."""
+
+    combined_codes = dict(DEFAULT_NPS_PARK_CODES)
+
+    try:
+        if isinstance(NPS_PARK_CODES, dict):
+            combined_codes.update(NPS_PARK_CODES)
+    except Exception:
+        pass
+
+    # First try the exact park name.
+    exact = combined_codes.get(park_name)
+    if exact:
+        return exact
+
+    # Then try a normalized comparison.
+    target = normalize_park_name(park_name)
+
+    for name, code in combined_codes.items():
+        if normalize_park_name(name) == target:
+            return code
+
+    # A few common shortened forms, just in case the CSV uses them.
+    aliases = {
+        "acadia": "acad",
+        "bryce canyon": "brca",
+        "cuyahoga valley": "cuva",
+        "glacier": "glac",
+        "grand canyon": "grca",
+        "grand teton": "grte",
+        "great smoky mountains": "grsm",
+        "hot springs": "hosp",
+        "indiana dunes": "indu",
+        "joshua tree": "jotr",
+        "olympic": "olym",
+        "rocky mountain": "romo",
+        "yellowstone": "yell",
+        "yosemite": "yose",
+        "zion": "zion",
+    }
+
+    shortened = target
+    shortened = shortened.replace(" national park", "")
+    shortened = shortened.replace(" np", "")
+    shortened = shortened.strip()
+
+    return aliases.get(shortened)
+
+
+def get_map_park_details(park_name):
+    """
+    Load NPS details for a map marker.
+
+    The API helper itself is cached in nps_api.py, so rebuilding the map
+    does not repeatedly hit the NPS endpoint for every Streamlit rerun.
+    """
+
+    park_code = resolve_nps_park_code(park_name)
+
+    if not park_code:
+        return None
+
+    try:
+        return get_nps_park_data(park_code)
+    except Exception:
+        return None
+
+
 def park_map(map_df):
     """
     Interactive National Parks map.
@@ -470,6 +573,7 @@ def park_map(map_df):
         - blue water
         - minimal road clutter
         - interactive biodiversity markers
+        - official NPS park photos on hover
 
     Optional layers:
         - Light Map
@@ -685,13 +789,156 @@ def park_map(map_df):
 
 
         # ----------------------------------------------------
-        # HOVER INFORMATION
+        # LOAD NPS PARK INFORMATION
         # ----------------------------------------------------
 
-        tooltip = (
-            f"<b>{park_name}</b>"
-            f"<br>"
-            f"{records:,} biodiversity records"
+        nps_data = get_map_park_details(
+            park_name
+        )
+
+        photo_url = None
+        official_name = park_name
+        states = ""
+
+        if isinstance(nps_data, dict):
+
+            photo_url = (
+                nps_data.get("photo_url")
+                or ""
+            )
+
+            official_name = (
+                nps_data.get("name")
+                or park_name
+            )
+
+            states = (
+                nps_data.get("states")
+                or ""
+            )
+
+        safe_official_name = html.escape(
+            str(official_name)
+        )
+
+        safe_states = html.escape(
+            str(states)
+        )
+
+        safe_photo_url = html.escape(
+            str(photo_url),
+            quote=True,
+        ) if photo_url else ""
+
+
+        # ----------------------------------------------------
+        # HOVER CARD
+        # ----------------------------------------------------
+
+        if safe_photo_url:
+
+            image_html = f"""
+                <img
+                    src="{safe_photo_url}"
+                    alt="{safe_official_name}"
+                    style="
+                        display:block;
+                        width:250px;
+                        height:140px;
+                        object-fit:cover;
+                        border-radius:8px;
+                        margin:0 0 9px 0;
+                    "
+                >
+            """
+
+        else:
+
+            image_html = ""
+
+
+        states_html = ""
+
+        if safe_states:
+
+            states_html = f"""
+                <div style="
+                    margin-top:3px;
+                    color:#6B7280;
+                    font-size:11px;
+                ">
+                    {safe_states}
+                </div>
+            """
+
+
+        if safe_photo_url:
+
+            photo_credit_html = """
+                <div style="
+                    margin-top:6px;
+                    font-size:10px;
+                    color:#9CA3AF;
+                ">
+                    Park photo: National Park Service
+                </div>
+            """
+
+        else:
+
+            photo_credit_html = """
+                <div style="
+                    margin-top:6px;
+                    font-size:10px;
+                    color:#9CA3AF;
+                ">
+                    NPS photo unavailable
+                </div>
+            """
+
+
+        tooltip_html = f"""
+        <div style="
+            width:260px;
+            padding:5px;
+            font-family:Arial,sans-serif;
+            background:#FFFFFF;
+            color:#1F2329;
+        ">
+
+            {image_html}
+
+            <div style="
+                font-size:15px;
+                font-weight:700;
+                line-height:1.25;
+                margin-bottom:5px;
+            ">
+                {safe_official_name}
+            </div>
+
+            <div style="
+                font-size:12px;
+                color:#4B5563;
+                line-height:1.4;
+            ">
+                <strong>{records:,}</strong>
+                biodiversity records
+            </div>
+
+            {states_html}
+
+            {photo_credit_html}
+
+        </div>
+        """
+
+
+        tooltip = folium.Tooltip(
+            tooltip_html,
+            sticky=True,
+            direction="top",
+            opacity=0.98,
         )
 
 
@@ -699,32 +946,40 @@ def park_map(map_df):
         # CLICK POPUP
         # ----------------------------------------------------
 
-        popup_html = (
-            "<div "
-            "style='"
-            "font-family:Arial,sans-serif;"
-            "font-size:13px;"
-            "min-width:190px;"
-            "'>"
+        popup_html = f"""
+        <div style="
+            width:270px;
+            font-family:Arial,sans-serif;
+            color:#1F2329;
+        ">
 
-            f"<b>{park_name}</b>"
+            {image_html}
 
-            "<br>"
+            <div style="
+                font-size:15px;
+                font-weight:700;
+                line-height:1.25;
+                margin-bottom:5px;
+            ">
+                {safe_official_name}
+            </div>
 
-            "<span "
-            "style='color:#6B7280;'>"
+            <div style="
+                font-size:12px;
+                color:#6B7280;
+            ">
+                {records:,} biodiversity records
+            </div>
 
-            f"{records:,} biodiversity records"
+            {states_html}
 
-            "</span>"
-
-            "</div>"
-        )
+        </div>
+        """
 
 
         popup = folium.Popup(
             popup_html,
-            max_width=280,
+            max_width=300,
         )
 
 
