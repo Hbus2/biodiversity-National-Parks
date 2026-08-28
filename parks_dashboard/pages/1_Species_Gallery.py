@@ -17,6 +17,8 @@ Images are provided through iNaturalist.
 
 import json
 import html
+import re
+
 import streamlit as st
 from openai import OpenAI
 
@@ -66,7 +68,7 @@ def get_openai_client():
 
 
 # ============================================================
-# SMART SEARCH
+# SEARCH INTERPRETER
 # ============================================================
 
 def interpret_search(
@@ -75,18 +77,19 @@ def interpret_search(
     category_options,
 ):
     """
-    Converts a natural-language search into the filters
-    already used by the Species Gallery.
+    Converts a natural-language search into filters.
 
     Examples:
 
         Yellowstone
 
+        bear
+
         bears in Yellowstone
 
-        birds in Grand Canyon
+        deer in Yosemite
 
-        mammals in Yosemite
+        birds in Grand Canyon
     """
 
     client = get_openai_client()
@@ -105,8 +108,8 @@ def interpret_search(
 You are a search interpreter for a biodiversity application
 covering 15 highly visited U.S. National Parks.
 
-Your only job is to translate the user's search into the
-filters used by the application.
+Your job is to translate the user's search into filters used
+by the application.
 
 AVAILABLE PARKS:
 
@@ -123,12 +126,12 @@ RULES:
 2. The category must match one of the AVAILABLE SPECIES
    CATEGORIES exactly.
 
-3. Understand casual park names and abbreviations.
+3. Understand casual park names.
 
 Examples:
 
 "Grand Canyon"
-should match the appropriate Grand Canyon National Park.
+should match Grand Canyon National Park.
 
 "Yellowstone"
 should match Yellowstone National Park.
@@ -151,30 +154,44 @@ reptiles
 
 fish
 
-5. If the user specifies an individual animal or species,
-   put a concise searchable term in "species".
+5. If the user specifies an animal or species, put the
+   meaningful animal name in "species".
 
 Examples:
+
+"bear"
+species = "bear"
+
+"bears"
+species = "bear"
+
+"deer"
+species = "deer"
+
+"eagle"
+species = "eagle"
 
 "bears in Yellowstone"
 species = "bear"
 
-"eagles in Grand Canyon"
-species = "eagle"
-
-"black bear"
+"black bears in Yellowstone"
 species = "black bear"
 
-6. Do not invent parks.
+"white tailed deer"
+species = "white tailed deer"
 
-7. Do not invent categories.
+6. Do not return unrelated broader terms.
 
-8. If the user does not specify a park, use null.
+7. Do not invent parks.
 
-9. If the user does not specify a category, use null.
+8. Do not invent categories.
 
-10. If the user does not specify an individual species,
-    use null.
+9. If the user does not specify a park, use null.
+
+10. If the user does not specify a category, use null.
+
+11. If the user does not specify an individual animal or
+    species, use null.
 
 Return ONLY valid JSON.
 
@@ -224,14 +241,22 @@ USER SEARCH:
     )
 
     # --------------------------------------------------------
-    # VALIDATE RETURNED VALUES
+    # VALIDATE PARK
     # --------------------------------------------------------
 
     if park not in park_options:
         park = None
 
+    # --------------------------------------------------------
+    # VALIDATE CATEGORY
+    # --------------------------------------------------------
+
     if category not in category_options:
         category = None
+
+    # --------------------------------------------------------
+    # CLEAN SPECIES TERM
+    # --------------------------------------------------------
 
     if species is not None:
 
@@ -250,7 +275,7 @@ USER SEARCH:
 
 
 # ============================================================
-# TEXT CLEANING
+# CLEAN TEXT
 # ============================================================
 
 def clean_text_value(value):
@@ -290,6 +315,193 @@ def clean_text_value(value):
 
 
 # ============================================================
+# SMART SPECIES SEARCH
+# ============================================================
+
+def apply_smart_species_search(
+    source_df,
+    column_map,
+    search_term,
+):
+    """
+    Apply word-aware matching to scientific and common names.
+
+    This avoids loose substring matches.
+
+    Example:
+
+        bear
+
+    matches:
+
+        American Black Bear
+        Black Bear
+        Grizzly Bear
+
+    but does not match unrelated names simply because the
+    letters b-e-a-r happen to appear inside another word.
+    """
+
+    search_term = clean_text_value(
+        search_term
+    )
+
+    if not search_term:
+        return source_df
+
+    scientific_column = column_map.get(
+        "sci_name"
+    )
+
+    common_column = column_map.get(
+        "common_names"
+    )
+
+    # --------------------------------------------------------
+    # NORMALIZE SEARCH TERM
+    # --------------------------------------------------------
+
+    search_term = (
+        search_term
+        .strip()
+        .casefold()
+    )
+
+    # --------------------------------------------------------
+    # BASIC SINGULAR NORMALIZATION
+    # --------------------------------------------------------
+    #
+    # Helps searches such as:
+    #
+    # bears -> bear
+    # eagles -> eagle
+    # wolves -> wolf
+    #
+    # Only simple cases are handled here because the AI
+    # normally already returns a clean singular search term.
+    # --------------------------------------------------------
+
+    simple_plural_map = {
+        "bears": "bear",
+        "deer": "deer",
+        "eagles": "eagle",
+        "wolves": "wolf",
+        "foxes": "fox",
+        "elk": "elk",
+        "moose": "moose",
+        "birds": "bird",
+        "snakes": "snake",
+        "frogs": "frog",
+        "toads": "toad",
+        "rabbits": "rabbit",
+        "hares": "hare",
+        "squirrels": "squirrel",
+        "mice": "mouse",
+        "ducks": "duck",
+        "hawks": "hawk",
+        "owls": "owl",
+    }
+
+    search_term = simple_plural_map.get(
+        search_term,
+        search_term,
+    )
+
+    # --------------------------------------------------------
+    # CREATE WORD-AWARE REGEX
+    # --------------------------------------------------------
+
+    escaped_term = re.escape(
+        search_term
+    )
+
+    # Allow spaces or hyphens between words.
+    #
+    # Example:
+    #
+    # white tailed deer
+    #
+    # can match:
+    #
+    # White-tailed Deer
+
+    escaped_term = escaped_term.replace(
+        r"\ ",
+        r"[\s\-]+",
+    )
+
+    pattern = (
+        rf"(?<!\w){escaped_term}(?!\w)"
+    )
+
+    masks = []
+
+    # --------------------------------------------------------
+    # SEARCH COMMON NAMES
+    # --------------------------------------------------------
+
+    if common_column:
+
+        common_mask = (
+            source_df[
+                common_column
+            ]
+            .fillna("")
+            .astype(str)
+            .str.contains(
+                pattern,
+                case=False,
+                regex=True,
+                na=False,
+            )
+        )
+
+        masks.append(
+            common_mask
+        )
+
+    # --------------------------------------------------------
+    # SEARCH SCIENTIFIC NAMES
+    # --------------------------------------------------------
+
+    if scientific_column:
+
+        scientific_mask = (
+            source_df[
+                scientific_column
+            ]
+            .fillna("")
+            .astype(str)
+            .str.contains(
+                pattern,
+                case=False,
+                regex=True,
+                na=False,
+            )
+        )
+
+        masks.append(
+            scientific_mask
+        )
+
+    if not masks:
+        return source_df
+
+    final_mask = masks[0]
+
+    for mask in masks[1:]:
+
+        final_mask = (
+            final_mask
+            | mask
+        )
+
+    return source_df[
+        final_mask
+    ].copy()
+
+
+# ============================================================
 # SPECIES LOOKUP KEY
 # ============================================================
 
@@ -298,10 +510,10 @@ def species_lookup_key(
     common_names,
 ):
     """
-    Create a consistent species key.
+    Create a consistent key for matching species
+    back to the source dataframe.
 
-    Scientific name is preferred because it is generally
-    more reliable for matching a species across parks.
+    Scientific name is preferred.
     """
 
     scientific_name = clean_text_value(
@@ -338,15 +550,8 @@ def build_species_park_lookup(
     column_map,
 ):
     """
-    Creates a mapping between each species and every
-    National Park where that species appears.
-
-    Example:
-
-    Ursus americanus
-        -> Great Smoky Mountains National Park
-        -> Yellowstone National Park
-        -> Yosemite National Park
+    Create a mapping containing every National Park
+    associated with each species.
     """
 
     lookup = {}
@@ -374,20 +579,16 @@ def build_species_park_lookup(
 
         if scientific_column:
 
-            scientific_name = (
-                source_row.get(
-                    scientific_column,
-                    "",
-                )
+            scientific_name = source_row.get(
+                scientific_column,
+                "",
             )
 
         if common_column:
 
-            common_names = (
-                source_row.get(
-                    common_column,
-                    "",
-                )
+            common_names = source_row.get(
+                common_column,
+                "",
             )
 
         key = species_lookup_key(
@@ -440,10 +641,6 @@ def render_species_parks(
     """
     Display National Park information underneath
     each species card.
-
-    This version intentionally keeps the HTML aligned
-    to the left so Streamlit renders it as HTML instead
-    of displaying the markup as code.
     """
 
     if not park_names:
@@ -467,7 +664,7 @@ def render_species_parks(
         return
 
     # --------------------------------------------------------
-    # ONE PARK
+    # SINGLE PARK
     # --------------------------------------------------------
 
     if len(cleaned_parks) == 1:
@@ -498,10 +695,8 @@ def render_species_parks(
         park_text
     )
 
-    # IMPORTANT:
-    # HTML starts at the far left.
-    # This prevents Streamlit Markdown from interpreting
-    # the HTML as a code block.
+    # HTML intentionally begins at the far left so Streamlit
+    # does not interpret it as a Markdown code block.
 
     park_html = f"""
 <div style="margin-top:8px; padding-top:9px; border-top:1px solid #ECEFF1;">
@@ -613,6 +808,13 @@ if "smart_species_query" not in st.session_state:
     ] = ""
 
 
+if "smart_species_term" not in st.session_state:
+
+    st.session_state[
+        "smart_species_term"
+    ] = ""
+
+
 if "gallery_page" not in st.session_state:
 
     st.session_state[
@@ -693,20 +895,40 @@ def run_smart_search():
             ] = []
 
         # ----------------------------------------------------
-        # SPECIES FILTER
+        # SMART SPECIES FILTER
+        # --------------------------------------------------------
+        #
+        # IMPORTANT:
+        #
+        # Do NOT put this inside gallery_species_search.
+        #
+        # That old field uses the regular broad text search.
+        # Instead, smart searches are handled separately.
         # ----------------------------------------------------
 
         if result["species"]:
 
             st.session_state[
-                "gallery_species_search"
+                "smart_species_term"
             ] = result["species"]
 
         else:
 
             st.session_state[
-                "gallery_species_search"
+                "smart_species_term"
             ] = ""
+
+        # ----------------------------------------------------
+        # CLEAR MANUAL SPECIES SEARCH
+        # --------------------------------------------------------
+        #
+        # Prevent an old manual filter from interfering
+        # with a new smart search.
+        # ----------------------------------------------------
+
+        st.session_state[
+            "gallery_species_search"
+        ] = ""
 
         # ----------------------------------------------------
         # RETURN TO PAGE 1
@@ -717,7 +939,7 @@ def run_smart_search():
         ] = 1
 
         # ----------------------------------------------------
-        # CLEAR PREVIOUS ERROR
+        # CLEAR ERROR
         # ----------------------------------------------------
 
         st.session_state[
@@ -763,6 +985,10 @@ def clear_gallery_search():
 
     st.session_state[
         "smart_species_query"
+    ] = ""
+
+    st.session_state[
+        "smart_species_term"
     ] = ""
 
     st.session_state[
@@ -827,12 +1053,14 @@ st.sidebar.markdown(
     "## Filters"
 )
 
+
 selected_parks = st.sidebar.multiselect(
     "Park name",
     park_options,
     placeholder="All parks",
     key="gallery_park_filter",
 )
+
 
 selected_categories = st.sidebar.multiselect(
     "Category",
@@ -841,11 +1069,13 @@ selected_categories = st.sidebar.multiselect(
     key="gallery_category_filter",
 )
 
+
 search_text = st.sidebar.text_input(
     "Search species",
     placeholder="Scientific or common name...",
     key="gallery_species_search",
 )
+
 
 st.sidebar.caption(
     "Empty filters show all species."
@@ -853,7 +1083,7 @@ st.sidebar.caption(
 
 
 # ============================================================
-# APPLY FILTERS
+# APPLY STANDARD FILTERS
 # ============================================================
 
 fdf = apply_filters(
@@ -862,6 +1092,30 @@ fdf = apply_filters(
     selected_parks,
     selected_categories,
     search_text,
+)
+
+
+# ============================================================
+# APPLY SMART SPECIES SEARCH
+# ============================================================
+#
+# This runs AFTER the normal filters.
+#
+# A search such as:
+#
+# bear
+#
+# is now treated as a species-name word instead of a loose
+# substring.
+# ============================================================
+
+fdf = apply_smart_species_search(
+    fdf,
+    cols,
+    st.session_state.get(
+        "smart_species_term",
+        "",
+    ),
 )
 
 
@@ -897,6 +1151,7 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
+
 
 st.markdown(
     '<div class="dash-sub">'
@@ -1138,7 +1393,7 @@ for row_df in rows:
 
 
                 # --------------------------------------------
-                # EXISTING SPECIES PHOTO CARD
+                # SPECIES PHOTO CARD
                 # --------------------------------------------
 
                 species_card(
