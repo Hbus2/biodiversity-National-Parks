@@ -719,6 +719,10 @@ def render_species_parks(
 # SIDEBAR NAVIGATION
 # ============================================================
 
+# ============================================================
+# SIDEBAR NAVIGATION
+# ============================================================
+
 st.sidebar.page_link(
     "app.py",
     label="Homepage",
@@ -727,6 +731,11 @@ st.sidebar.page_link(
 st.sidebar.page_link(
     "pages/1_Species_Gallery.py",
     label="Species Gallery",
+)
+
+st.sidebar.page_link(
+    "pages/2_Species_Guide.py",
+    label="Species Guide",
 )
 
 st.sidebar.divider()
