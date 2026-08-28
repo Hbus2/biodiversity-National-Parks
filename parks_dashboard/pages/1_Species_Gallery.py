@@ -207,7 +207,6 @@ USER SEARCH:
         "species"
     )
 
-
     # --------------------------------------------------------
     # VALIDATE AI RESULTS AGAINST REAL DATASET VALUES
     # --------------------------------------------------------
@@ -227,12 +226,248 @@ USER SEARCH:
         if not species:
             species = None
 
-
     return {
         "park": park,
         "category": category,
         "species": species,
     }
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def clean_text_value(value):
+    """
+    Convert a dataset value into safe clean display text.
+    Handles None, NaN and empty values.
+    """
+
+    if value is None:
+        return ""
+
+    try:
+        if value != value:
+            return ""
+    except Exception:
+        pass
+
+    text = str(value).strip()
+
+    if text.lower() in {
+        "",
+        "nan",
+        "none",
+        "<na>",
+    }:
+        return ""
+
+    return text
+
+
+def species_lookup_key(
+    scientific_name,
+    common_names,
+):
+    """
+    Create a consistent key for matching a species in the
+    gallery back to its source rows.
+
+    Scientific name is preferred because it is more reliable
+    and unique than the common name.
+    """
+
+    scientific_name = clean_text_value(
+        scientific_name
+    )
+
+    common_names = clean_text_value(
+        common_names
+    )
+
+    if scientific_name:
+        return (
+            "scientific",
+            scientific_name.casefold(),
+        )
+
+    if common_names:
+        return (
+            "common",
+            common_names.casefold(),
+        )
+
+    return None
+
+
+def build_species_park_lookup(
+    source_df,
+    column_map,
+):
+    """
+    Build a dictionary containing every National Park
+    associated with every species currently represented
+    by the filtered dataframe.
+
+    Example:
+
+        {
+            ("scientific", "ursus americanus"): [
+                "Great Smoky Mountains National Park",
+                "Yellowstone National Park",
+            ]
+        }
+    """
+
+    lookup = {}
+
+    park_column = column_map.get(
+        "park_name"
+    )
+
+    scientific_column = column_map.get(
+        "sci_name"
+    )
+
+    common_column = column_map.get(
+        "common_names"
+    )
+
+    # We need a park column to build the association.
+    if not park_column:
+        return lookup
+
+    for _, source_row in source_df.iterrows():
+
+        scientific_name = ""
+
+        common_names = ""
+
+        if scientific_column:
+
+            scientific_name = (
+                source_row.get(
+                    scientific_column,
+                    "",
+                )
+            )
+
+        if common_column:
+
+            common_names = (
+                source_row.get(
+                    common_column,
+                    "",
+                )
+            )
+
+        key = species_lookup_key(
+            scientific_name,
+            common_names,
+        )
+
+        if key is None:
+            continue
+
+        park_name = clean_text_value(
+            source_row.get(
+                park_column,
+                "",
+            )
+        )
+
+        if not park_name:
+            continue
+
+        if key not in lookup:
+            lookup[key] = set()
+
+        lookup[key].add(
+            park_name
+        )
+
+    # Convert sets to alphabetically sorted lists
+    # for consistent display.
+    return {
+        key: sorted(parks)
+        for key, parks in lookup.items()
+    }
+
+
+def render_species_parks(
+    park_names,
+):
+    """
+    Display the park or parks directly underneath
+    each species photo/card.
+    """
+
+    if not park_names:
+        return
+
+    park_names = [
+        clean_text_value(park)
+        for park in park_names
+        if clean_text_value(park)
+    ]
+
+    if not park_names:
+        return
+
+    if len(park_names) == 1:
+
+        label = "National Park"
+
+        park_text = park_names[0]
+
+    else:
+
+        label = "National Parks"
+
+        park_text = ", ".join(
+            park_names
+        )
+
+    label = html.escape(
+        label
+    )
+
+    park_text = html.escape(
+        park_text
+    )
+
+    st.markdown(
+        f"""
+        <div style="
+            margin-top:8px;
+            padding-top:9px;
+            border-top:1px solid #ECEFF1;
+        ">
+            <div style="
+                font-size:10px;
+                line-height:1.2;
+                font-weight:600;
+                text-transform:uppercase;
+                letter-spacing:0.45px;
+                color:#9299A1;
+                margin-bottom:4px;
+            ">
+                {label}
+            </div>
+
+            <div style="
+                font-size:12px;
+                line-height:1.45;
+                font-weight:500;
+                color:#5C646C;
+                padding-bottom:2px;
+            ">
+                {park_text}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ============================================================
@@ -353,7 +588,6 @@ def run_ai_search():
         "",
     ).strip()
 
-
     if not query:
 
         st.session_state[
@@ -364,7 +598,6 @@ def run_ai_search():
 
         return
 
-
     try:
 
         result = interpret_ai_search(
@@ -372,7 +605,6 @@ def run_ai_search():
             park_options,
             category_options,
         )
-
 
         # ----------------------------------------------------
         # UPDATE PARK FILTER
@@ -392,7 +624,6 @@ def run_ai_search():
                 "gallery_park_filter"
             ] = []
 
-
         # ----------------------------------------------------
         # UPDATE CATEGORY FILTER
         # ----------------------------------------------------
@@ -411,7 +642,6 @@ def run_ai_search():
                 "gallery_category_filter"
             ] = []
 
-
         # ----------------------------------------------------
         # UPDATE SPECIES SEARCH
         # ----------------------------------------------------
@@ -428,20 +658,17 @@ def run_ai_search():
                 "gallery_species_search"
             ] = ""
 
-
         # Return to first page after a new search
 
         st.session_state[
             "gallery_page"
         ] = 1
 
-
         # Successful searches happen silently
 
         st.session_state[
             "ai_search_error"
         ] = ""
-
 
     except json.JSONDecodeError:
 
@@ -451,7 +678,6 @@ def run_ai_search():
             "The AI search returned an unexpected "
             "response. Please try again."
         )
-
 
     except Exception as error:
 
@@ -502,13 +728,11 @@ st.sidebar.markdown(
     "## Find Species with AI"
 )
 
-
 st.sidebar.text_input(
     "What would you like to find?",
     placeholder="Try: birds in Grand Canyon",
     key="ai_species_query",
 )
-
 
 st.sidebar.button(
     "Search with AI",
@@ -538,7 +762,6 @@ st.sidebar.button(
     on_click=clear_gallery_search,
 )
 
-
 st.sidebar.divider()
 
 
@@ -550,14 +773,12 @@ st.sidebar.markdown(
     "## Filters"
 )
 
-
 selected_parks = st.sidebar.multiselect(
     "Park name",
     park_options,
     placeholder="All parks",
     key="gallery_park_filter",
 )
-
 
 selected_categories = st.sidebar.multiselect(
     "Category",
@@ -566,13 +787,11 @@ selected_categories = st.sidebar.multiselect(
     key="gallery_category_filter",
 )
 
-
 search_text = st.sidebar.text_input(
     "Search species",
     placeholder="Scientific or common name...",
     key="gallery_species_search",
 )
-
 
 st.sidebar.caption(
     "Empty filters show everything. "
@@ -593,6 +812,39 @@ fdf = apply_filters(
 )
 
 
+# ============================================================
+# BUILD SPECIES -> NATIONAL PARK LOOKUP
+# ============================================================
+#
+# IMPORTANT:
+#
+# This happens AFTER the filters are applied.
+#
+# That means:
+#
+# - If no park is selected:
+#       Each species shows every park where it occurs.
+#
+# - If Yellowstone is selected:
+#       The cards only show Yellowstone.
+#
+# - If several parks are selected:
+#       A species shows the selected parks in which it occurs.
+#
+# ============================================================
+
+species_park_lookup = (
+    build_species_park_lookup(
+        fdf,
+        cols,
+    )
+)
+
+
+# ============================================================
+# CREATE SPECIES LIST
+# ============================================================
+
 sp_df = species_list(
     fdf,
     cols,
@@ -609,7 +861,6 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
-
 
 st.markdown(
     '<div class="dash-sub">'
@@ -631,13 +882,11 @@ if len(selected_parks) == 1:
         selected_parks[0]
     )
 
-
 elif len(selected_parks) > 1:
 
     park_banner_text = (
         f"{len(selected_parks)} National Parks Selected"
     )
-
 
 else:
 
@@ -683,7 +932,6 @@ park_banner_html = (
     '</div>'
     '</div>'
 )
-
 
 st.markdown(
     park_banner_html,
@@ -771,7 +1019,6 @@ with top_l:
         total,
     )
 
-
     st.markdown(
         f"""
         <div
@@ -817,7 +1064,6 @@ for row_df in rows:
         PER_ROW
     )
 
-
     for col, (_, row) in zip(
         grid_cols,
         row_df.iterrows(),
@@ -829,13 +1075,60 @@ for row_df in rows:
                 border=True
             ):
 
+                # --------------------------------------------
+                # SPECIES INFORMATION
+                # --------------------------------------------
+
+                scientific_name = (
+                    clean_text_value(
+                        row.get(
+                            "Scientific name",
+                            "",
+                        )
+                    )
+                )
+
+                common_names = (
+                    clean_text_value(
+                        row.get(
+                            "Common names",
+                            "",
+                        )
+                    )
+                )
+
+
+                # --------------------------------------------
+                # EXISTING PHOTO / SPECIES CARD
+                # --------------------------------------------
+
                 species_card(
-                    row.get(
-                        "Scientific name",
-                        "",
-                    ),
-                    row.get(
-                        "Common names",
-                        "",
-                    ),
+                    scientific_name,
+                    common_names,
+                )
+
+
+                # --------------------------------------------
+                # FIND NATIONAL PARK(S) FOR THIS SPECIES
+                # --------------------------------------------
+
+                lookup_key = species_lookup_key(
+                    scientific_name,
+                    common_names,
+                )
+
+                park_names = (
+                    species_park_lookup.get(
+                        lookup_key,
+                        [],
+                    )
+                )
+
+
+                # --------------------------------------------
+                # DISPLAY PARK(S) BELOW PHOTO CARD
+                # --------------------------------------------
+
+                render_species_parks(
+                    park_names
                 )
