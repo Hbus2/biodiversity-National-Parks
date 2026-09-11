@@ -16,7 +16,6 @@ Images are provided through iNaturalist.
 """
 
 import json
-import html
 import re
 
 import streamlit as st
@@ -74,7 +73,7 @@ def get_openai_client():
 def load_gallery_data(path):
     """
     Cache the source dataset so Streamlit does not reload
-    the CSV every time a widget causes a rerun.
+    the data every time the page reruns.
     """
 
     return get_data(path)
@@ -96,8 +95,8 @@ def interpret_search(
     """
     Convert natural-language searches into gallery filters.
 
-    Search results are cached for 24 hours so repeated
-    searches do not require another API request.
+    Results are cached for 24 hours so repeated searches
+    do not require another API request.
     """
 
     client = get_openai_client()
@@ -222,10 +221,9 @@ USER SEARCH:
         max_output_tokens=120,
     )
 
-    raw_response = response.output_text.strip()
-
     raw_response = (
-        raw_response
+        response.output_text
+        .strip()
         .replace("```json", "")
         .replace("```JSON", "")
         .replace("```", "")
@@ -236,19 +234,36 @@ USER SEARCH:
         raw_response
     )
 
-    park = result.get("park")
-    category = result.get("category")
-    species = result.get("species")
+    park = result.get(
+        "park"
+    )
 
-    # Validate park
+    category = result.get(
+        "category"
+    )
+
+    species = result.get(
+        "species"
+    )
+
+    # --------------------------------------------------------
+    # VALIDATE PARK
+    # --------------------------------------------------------
+
     if park not in park_options:
         park = None
 
-    # Validate category
+    # --------------------------------------------------------
+    # VALIDATE CATEGORY
+    # --------------------------------------------------------
+
     if category not in category_options:
         category = None
 
-    # Clean species
+    # --------------------------------------------------------
+    # CLEAN SPECIES
+    # --------------------------------------------------------
+
     if species is not None:
 
         species = str(
@@ -283,8 +298,10 @@ def clean_text_value(value):
         return ""
 
     try:
+
         if value != value:
             return ""
+
     except Exception:
         pass
 
@@ -369,7 +386,7 @@ def apply_smart_species_search(
     )
 
     # --------------------------------------------------------
-    # WORD-AWARE REGEX
+    # CREATE WORD-AWARE REGEX
     # --------------------------------------------------------
 
     escaped_term = re.escape(
@@ -388,13 +405,15 @@ def apply_smart_species_search(
     masks = []
 
     # --------------------------------------------------------
-    # COMMON NAME SEARCH
+    # SEARCH COMMON NAMES
     # --------------------------------------------------------
 
     if common_column:
 
         common_mask = (
-            source_df[common_column]
+            source_df[
+                common_column
+            ]
             .fillna("")
             .astype(str)
             .str.contains(
@@ -410,13 +429,15 @@ def apply_smart_species_search(
         )
 
     # --------------------------------------------------------
-    # SCIENTIFIC NAME SEARCH
+    # SEARCH SCIENTIFIC NAMES
     # --------------------------------------------------------
 
     if scientific_column:
 
         scientific_mask = (
-            source_df[scientific_column]
+            source_df[
+                scientific_column
+            ]
             .fillna("")
             .astype(str)
             .str.contains(
@@ -489,8 +510,7 @@ def species_lookup_key(
 
 
 # ============================================================
-# BUILD SPECIES -> PARK LOOKUP
-# OPTIMIZED / VECTORIZED
+# SPECIES -> PARK LOOKUP
 # ============================================================
 
 @st.cache_data(show_spinner=False)
@@ -499,11 +519,11 @@ def build_species_park_lookup(
     column_map,
 ):
     """
-    Create a mapping containing every National Park
+    Build a lookup containing every National Park
     associated with each species.
 
-    This version avoids iterating over every dataframe
-    row with iterrows(), which improves rerun performance.
+    This version avoids iterrows() across the entire dataset
+    and removes duplicate park names.
     """
 
     park_column = column_map.get(
@@ -524,7 +544,7 @@ def build_species_park_lookup(
     temp = source_df.copy()
 
     # --------------------------------------------------------
-    # CLEAN PARK
+    # CLEAN PARK NAME
     # --------------------------------------------------------
 
     temp["_park"] = (
@@ -569,7 +589,7 @@ def build_species_park_lookup(
         temp["_common"] = ""
 
     # --------------------------------------------------------
-    # REMOVE INVALID TEXT VALUES
+    # REMOVE INVALID STRING VALUES
     # --------------------------------------------------------
 
     invalid_values = {
@@ -613,7 +633,7 @@ def build_species_park_lookup(
     ] = ""
 
     # --------------------------------------------------------
-    # SPECIES LOOKUP TYPE
+    # CREATE LOOKUP TYPE
     # --------------------------------------------------------
 
     temp["_key_type"] = "scientific"
@@ -624,7 +644,7 @@ def build_species_park_lookup(
     ] = "common"
 
     # --------------------------------------------------------
-    # SPECIES LOOKUP VALUE
+    # CREATE LOOKUP VALUE
     # --------------------------------------------------------
 
     temp["_key_value"] = (
@@ -648,7 +668,7 @@ def build_species_park_lookup(
     )
 
     # --------------------------------------------------------
-    # REMOVE RECORDS WITHOUT USABLE SPECIES/PARK
+    # REMOVE ROWS WITHOUT SPECIES OR PARK
     # --------------------------------------------------------
 
     temp = temp[
@@ -658,6 +678,23 @@ def build_species_park_lookup(
 
     if temp.empty:
         return {}
+
+    # --------------------------------------------------------
+    # REMOVE DUPLICATE SPECIES / PARK COMBINATIONS
+    # --------------------------------------------------------
+
+    temp["_park_key"] = (
+        temp["_park"]
+        .str.casefold()
+    )
+
+    temp = temp.drop_duplicates(
+        subset=[
+            "_key_type",
+            "_key_value",
+            "_park_key",
+        ]
+    )
 
     # --------------------------------------------------------
     # GROUP PARKS BY SPECIES
@@ -671,18 +708,17 @@ def build_species_park_lookup(
             ],
             sort=False,
         )["_park"]
-        .agg(
-            lambda values: sorted(
-                set(values)
-            )
-        )
+        .agg(list)
     )
 
     return {
         (
             key_type,
             key_value,
-        ): parks
+        ): sorted(
+            parks,
+            key=str.casefold,
+        )
 
         for (
             key_type,
@@ -711,7 +747,7 @@ def get_species_list_cached(
 
 
 # ============================================================
-# CACHED STANDARD FILTER
+# CACHED STANDARD FILTERING
 # ============================================================
 
 @st.cache_data(show_spinner=False)
@@ -723,14 +759,14 @@ def apply_gallery_filters_cached(
     search_text,
 ):
     """
-    Cache the standard dataframe filtering step.
+    Cache standard dataframe filtering.
     """
 
     return apply_filters(
         source_df,
         column_map,
-        selected_parks,
-        selected_categories,
+        list(selected_parks),
+        list(selected_categories),
         search_text,
     )
 
@@ -745,6 +781,11 @@ def render_species_parks(
     """
     Display National Park information underneath
     each species card.
+
+    Uses native Streamlit rendering so HTML is never
+    displayed as plain text.
+
+    Duplicate park names are also removed.
     """
 
     if not park_names:
@@ -752,76 +793,72 @@ def render_species_parks(
 
     cleaned_parks = []
 
+    seen_parks = set()
+
     for park in park_names:
 
         cleaned_park = clean_text_value(
             park
         )
 
-        if cleaned_park:
+        if not cleaned_park:
+            continue
 
-            cleaned_parks.append(
-                cleaned_park
-            )
+        park_key = (
+            cleaned_park
+            .casefold()
+        )
+
+        if park_key in seen_parks:
+            continue
+
+        seen_parks.add(
+            park_key
+        )
+
+        cleaned_parks.append(
+            cleaned_park
+        )
 
     if not cleaned_parks:
         return
+
+    # --------------------------------------------------------
+    # LABEL
+    # --------------------------------------------------------
 
     if len(cleaned_parks) == 1:
 
         label = "National Park"
 
-        park_text = cleaned_parks[0]
-
     else:
 
         label = "National Parks"
 
-        park_text = ", ".join(
-            cleaned_parks
-        )
+    # --------------------------------------------------------
+    # PARK TEXT
+    # --------------------------------------------------------
 
-    label = html.escape(
+    park_text = ", ".join(
+        cleaned_parks
+    )
+
+    # --------------------------------------------------------
+    # VISUAL DIVIDER
+    # --------------------------------------------------------
+
+    st.markdown("---")
+
+    # --------------------------------------------------------
+    # DISPLAY PARK INFORMATION
+    # --------------------------------------------------------
+
+    st.caption(
         label
     )
 
-    park_text = html.escape(
+    st.write(
         park_text
-    )
-
-    park_html = f"""
-<div style="
-    margin-top:8px;
-    padding-top:9px;
-    border-top:1px solid #ECEFF1;
-">
-    <div style="
-        font-size:10px;
-        line-height:1.2;
-        font-weight:600;
-        text-transform:uppercase;
-        letter-spacing:0.45px;
-        color:#9299A1;
-        margin-bottom:4px;
-    ">
-        {label}
-    </div>
-
-    <div style="
-        font-size:12px;
-        line-height:1.45;
-        font-weight:500;
-        color:#5C646C;
-        padding-bottom:2px;
-    ">
-        {park_text}
-    </div>
-</div>
-"""
-
-    st.markdown(
-        park_html,
-        unsafe_allow_html=True,
     )
 
 
@@ -976,7 +1013,7 @@ def run_smart_search():
             ] = []
 
         # ----------------------------------------------------
-        # SMART SPECIES TERM
+        # SMART SPECIES FILTER
         # ----------------------------------------------------
 
         if result["species"]:
@@ -991,7 +1028,7 @@ def run_smart_search():
                 "smart_species_term"
             ] = ""
 
-        # Prevent old manual search from interfering
+        # Clear manual species filter
         st.session_state[
             "gallery_species_search"
         ] = ""
@@ -1001,6 +1038,7 @@ def run_smart_search():
             "gallery_page"
         ] = 1
 
+        # Clear previous errors
         st.session_state[
             "search_error"
         ] = ""
@@ -1019,7 +1057,8 @@ def run_smart_search():
         st.session_state[
             "search_error"
         ] = (
-            f"Search could not be completed: {error}"
+            f"Search could not be completed: "
+            f"{error}"
         )
 
 
@@ -1059,12 +1098,13 @@ def clear_gallery_search():
 
 
 # ============================================================
-# SMART SEARCH FORM
+# SMART SEARCH
 # ============================================================
 
 st.sidebar.markdown(
     "## Search"
 )
+
 
 with st.sidebar.form(
     "gallery_smart_search_form",
@@ -1077,16 +1117,15 @@ with st.sidebar.form(
         key="smart_species_query",
     )
 
-    smart_search_submitted = st.form_submit_button(
-        "Search",
-        use_container_width=True,
+    smart_search_submitted = (
+        st.form_submit_button(
+            "Search",
+            use_container_width=True,
+        )
     )
 
 
-# IMPORTANT:
-# This runs BEFORE the filter widgets below are created,
-# which allows us to safely update their session-state values.
-
+# Run smart search before the filter widgets are created.
 if smart_search_submitted:
 
     run_smart_search()
@@ -1121,12 +1160,13 @@ st.sidebar.divider()
 
 
 # ============================================================
-# FILTER FORM
+# FILTERS
 # ============================================================
 
 st.sidebar.markdown(
     "## Filters"
 )
+
 
 with st.sidebar.form(
     "gallery_filters_form",
@@ -1153,16 +1193,18 @@ with st.sidebar.form(
         key="gallery_species_search",
     )
 
-    filters_submitted = st.form_submit_button(
-        "Apply Filters",
-        use_container_width=True,
+    filters_submitted = (
+        st.form_submit_button(
+            "Apply Filters",
+            use_container_width=True,
+        )
     )
 
 
 if filters_submitted:
 
-    # Clear AI-generated species term so manual filtering
-    # becomes the active filter mode.
+    # Manual filtering becomes active instead of
+    # an older AI species search.
 
     st.session_state[
         "smart_species_term"
@@ -1258,6 +1300,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 st.markdown(
     '<div class="dash-sub">'
     'Explore species found throughout '
@@ -1280,7 +1323,8 @@ if len(selected_parks) == 1:
 elif len(selected_parks) > 1:
 
     park_banner_text = (
-        f"{len(selected_parks)} National Parks Selected"
+        f"{len(selected_parks)} "
+        f"National Parks Selected"
     )
 
 else:
@@ -1290,44 +1334,15 @@ else:
     )
 
 
-park_banner_text = html.escape(
-    str(park_banner_text)
+st.markdown(
+    "##### Currently viewing"
 )
-
-
-park_banner_html = (
-    '<div style="'
-    'background:transparent;'
-    'border-bottom:1px solid #E4E7EA;'
-    'padding:16px 0 15px 0;'
-    'margin-top:18px;'
-    'margin-bottom:20px;'
-    '">'
-    '<div style="'
-    'font-size:12px;'
-    'font-weight:500;'
-    'color:#7A828A;'
-    'margin-bottom:3px;'
-    'letter-spacing:0.2px;'
-    '">'
-    'Currently viewing'
-    '</div>'
-    '<div style="'
-    'font-size:23px;'
-    'line-height:1.25;'
-    'font-weight:650;'
-    'color:#1F2329;'
-    '">'
-    f'{park_banner_text}'
-    '</div>'
-    '</div>'
-)
-
 
 st.markdown(
-    park_banner_html,
-    unsafe_allow_html=True,
+    f"### {park_banner_text}"
 )
+
+st.divider()
 
 
 # ============================================================
@@ -1336,10 +1351,8 @@ st.markdown(
 
 PER_ROW = 5
 
-# Reduced from 25.
-# Rendering fewer species cards per page makes interaction
-# noticeably lighter, especially if species_card() performs
-# an iNaturalist lookup.
+# 15 cards instead of 25 reduces the amount of work
+# required for each gallery page.
 PER_PAGE = 15
 
 total = len(
@@ -1424,12 +1437,9 @@ with top_l:
 
     st.markdown(
         f"""
-<div class="card-sub" style="margin-top:28px;">
-    Showing {start + 1}-{end} of {total:,} species
-    (page {int(page)} of {n_pages})
-</div>
-""",
-        unsafe_allow_html=True,
+Showing **{start + 1}-{end}** of **{total:,}** species  
+Page **{int(page)} of {n_pages}**
+"""
     )
 
 
