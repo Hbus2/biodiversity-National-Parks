@@ -55,10 +55,9 @@ inject_css()
 @st.cache_resource
 def get_openai_client():
     """
-    Creates one reusable OpenAI client.
+    Create one reusable OpenAI client.
 
     API key is loaded from:
-
     .streamlit/secrets.toml
     """
 
@@ -68,28 +67,37 @@ def get_openai_client():
 
 
 # ============================================================
+# CACHED DATA LOADER
+# ============================================================
+
+@st.cache_data(show_spinner=False)
+def load_gallery_data(path):
+    """
+    Cache the source dataset so Streamlit does not reload
+    the CSV every time a widget causes a rerun.
+    """
+
+    return get_data(path)
+
+
+# ============================================================
 # SEARCH INTERPRETER
 # ============================================================
 
+@st.cache_data(
+    ttl=86400,
+    show_spinner=False,
+)
 def interpret_search(
     query,
     park_options,
     category_options,
 ):
     """
-    Converts a natural-language search into filters.
+    Convert natural-language searches into gallery filters.
 
-    Examples:
-
-        Yellowstone
-
-        bear
-
-        bears in Yellowstone
-
-        deer in Yosemite
-
-        birds in Grand Canyon
+    Search results are cached for 24 hours so repeated
+    searches do not require another API request.
     """
 
     client = get_openai_client()
@@ -228,36 +236,19 @@ USER SEARCH:
         raw_response
     )
 
-    park = result.get(
-        "park"
-    )
+    park = result.get("park")
+    category = result.get("category")
+    species = result.get("species")
 
-    category = result.get(
-        "category"
-    )
-
-    species = result.get(
-        "species"
-    )
-
-    # --------------------------------------------------------
-    # VALIDATE PARK
-    # --------------------------------------------------------
-
+    # Validate park
     if park not in park_options:
         park = None
 
-    # --------------------------------------------------------
-    # VALIDATE CATEGORY
-    # --------------------------------------------------------
-
+    # Validate category
     if category not in category_options:
         category = None
 
-    # --------------------------------------------------------
-    # CLEAN SPECIES TERM
-    # --------------------------------------------------------
-
+    # Clean species
     if species is not None:
 
         species = str(
@@ -292,10 +283,8 @@ def clean_text_value(value):
         return ""
 
     try:
-
         if value != value:
             return ""
-
     except Exception:
         pass
 
@@ -318,6 +307,7 @@ def clean_text_value(value):
 # SMART SPECIES SEARCH
 # ============================================================
 
+@st.cache_data(show_spinner=False)
 def apply_smart_species_search(
     source_df,
     column_map,
@@ -325,21 +315,6 @@ def apply_smart_species_search(
 ):
     """
     Apply word-aware matching to scientific and common names.
-
-    This avoids loose substring matches.
-
-    Example:
-
-        bear
-
-    matches:
-
-        American Black Bear
-        Black Bear
-        Grizzly Bear
-
-    but does not match unrelated names simply because the
-    letters b-e-a-r happen to appear inside another word.
     """
 
     search_term = clean_text_value(
@@ -357,10 +332,6 @@ def apply_smart_species_search(
         "common_names"
     )
 
-    # --------------------------------------------------------
-    # NORMALIZE SEARCH TERM
-    # --------------------------------------------------------
-
     search_term = (
         search_term
         .strip()
@@ -368,17 +339,7 @@ def apply_smart_species_search(
     )
 
     # --------------------------------------------------------
-    # BASIC SINGULAR NORMALIZATION
-    # --------------------------------------------------------
-    #
-    # Helps searches such as:
-    #
-    # bears -> bear
-    # eagles -> eagle
-    # wolves -> wolf
-    #
-    # Only simple cases are handled here because the AI
-    # normally already returns a clean singular search term.
+    # BASIC PLURAL NORMALIZATION
     # --------------------------------------------------------
 
     simple_plural_map = {
@@ -408,22 +369,12 @@ def apply_smart_species_search(
     )
 
     # --------------------------------------------------------
-    # CREATE WORD-AWARE REGEX
+    # WORD-AWARE REGEX
     # --------------------------------------------------------
 
     escaped_term = re.escape(
         search_term
     )
-
-    # Allow spaces or hyphens between words.
-    #
-    # Example:
-    #
-    # white tailed deer
-    #
-    # can match:
-    #
-    # White-tailed Deer
 
     escaped_term = escaped_term.replace(
         r"\ ",
@@ -437,15 +388,13 @@ def apply_smart_species_search(
     masks = []
 
     # --------------------------------------------------------
-    # SEARCH COMMON NAMES
+    # COMMON NAME SEARCH
     # --------------------------------------------------------
 
     if common_column:
 
         common_mask = (
-            source_df[
-                common_column
-            ]
+            source_df[common_column]
             .fillna("")
             .astype(str)
             .str.contains(
@@ -461,15 +410,13 @@ def apply_smart_species_search(
         )
 
     # --------------------------------------------------------
-    # SEARCH SCIENTIFIC NAMES
+    # SCIENTIFIC NAME SEARCH
     # --------------------------------------------------------
 
     if scientific_column:
 
         scientific_mask = (
-            source_df[
-                scientific_column
-            ]
+            source_df[scientific_column]
             .fillna("")
             .astype(str)
             .str.contains(
@@ -543,8 +490,10 @@ def species_lookup_key(
 
 # ============================================================
 # BUILD SPECIES -> PARK LOOKUP
+# OPTIMIZED / VECTORIZED
 # ============================================================
 
+@st.cache_data(show_spinner=False)
 def build_species_park_lookup(
     source_df,
     column_map,
@@ -552,9 +501,10 @@ def build_species_park_lookup(
     """
     Create a mapping containing every National Park
     associated with each species.
-    """
 
-    lookup = {}
+    This version avoids iterating over every dataframe
+    row with iterrows(), which improves rerun performance.
+    """
 
     park_column = column_map.get(
         "park_name"
@@ -569,66 +519,220 @@ def build_species_park_lookup(
     )
 
     if not park_column:
-        return lookup
+        return {}
 
-    for _, source_row in source_df.iterrows():
+    temp = source_df.copy()
 
-        scientific_name = ""
+    # --------------------------------------------------------
+    # CLEAN PARK
+    # --------------------------------------------------------
 
-        common_names = ""
+    temp["_park"] = (
+        temp[park_column]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
 
-        if scientific_column:
+    # --------------------------------------------------------
+    # CLEAN SCIENTIFIC NAME
+    # --------------------------------------------------------
 
-            scientific_name = source_row.get(
-                scientific_column,
-                "",
-            )
+    if scientific_column:
 
-        if common_column:
-
-            common_names = source_row.get(
-                common_column,
-                "",
-            )
-
-        key = species_lookup_key(
-            scientific_name,
-            common_names,
+        temp["_scientific"] = (
+            temp[scientific_column]
+            .fillna("")
+            .astype(str)
+            .str.strip()
         )
 
-        if key is None:
-            continue
+    else:
 
-        park_name = clean_text_value(
-            source_row.get(
-                park_column,
-                "",
+        temp["_scientific"] = ""
+
+    # --------------------------------------------------------
+    # CLEAN COMMON NAME
+    # --------------------------------------------------------
+
+    if common_column:
+
+        temp["_common"] = (
+            temp[common_column]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+
+    else:
+
+        temp["_common"] = ""
+
+    # --------------------------------------------------------
+    # REMOVE INVALID TEXT VALUES
+    # --------------------------------------------------------
+
+    invalid_values = {
+        "",
+        "nan",
+        "none",
+        "<na>",
+    }
+
+    scientific_invalid = (
+        temp["_scientific"]
+        .str.casefold()
+        .isin(invalid_values)
+    )
+
+    common_invalid = (
+        temp["_common"]
+        .str.casefold()
+        .isin(invalid_values)
+    )
+
+    park_invalid = (
+        temp["_park"]
+        .str.casefold()
+        .isin(invalid_values)
+    )
+
+    temp.loc[
+        scientific_invalid,
+        "_scientific",
+    ] = ""
+
+    temp.loc[
+        common_invalid,
+        "_common",
+    ] = ""
+
+    temp.loc[
+        park_invalid,
+        "_park",
+    ] = ""
+
+    # --------------------------------------------------------
+    # SPECIES LOOKUP TYPE
+    # --------------------------------------------------------
+
+    temp["_key_type"] = "scientific"
+
+    temp.loc[
+        temp["_scientific"] == "",
+        "_key_type",
+    ] = "common"
+
+    # --------------------------------------------------------
+    # SPECIES LOOKUP VALUE
+    # --------------------------------------------------------
+
+    temp["_key_value"] = (
+        temp["_scientific"]
+        .str.casefold()
+    )
+
+    use_common = (
+        temp["_scientific"] == ""
+    )
+
+    temp.loc[
+        use_common,
+        "_key_value",
+    ] = (
+        temp.loc[
+            use_common,
+            "_common",
+        ]
+        .str.casefold()
+    )
+
+    # --------------------------------------------------------
+    # REMOVE RECORDS WITHOUT USABLE SPECIES/PARK
+    # --------------------------------------------------------
+
+    temp = temp[
+        (temp["_key_value"] != "")
+        & (temp["_park"] != "")
+    ]
+
+    if temp.empty:
+        return {}
+
+    # --------------------------------------------------------
+    # GROUP PARKS BY SPECIES
+    # --------------------------------------------------------
+
+    grouped = (
+        temp.groupby(
+            [
+                "_key_type",
+                "_key_value",
+            ],
+            sort=False,
+        )["_park"]
+        .agg(
+            lambda values: sorted(
+                set(values)
             )
         )
-
-        if not park_name:
-            continue
-
-        if key not in lookup:
-
-            lookup[
-                key
-            ] = set()
-
-        lookup[
-            key
-        ].add(
-            park_name
-        )
+    )
 
     return {
+        (
+            key_type,
+            key_value,
+        ): parks
 
-        key: sorted(
-            parks
-        )
-
-        for key, parks in lookup.items()
+        for (
+            key_type,
+            key_value,
+        ), parks in grouped.items()
     }
+
+
+# ============================================================
+# CACHED SPECIES LIST
+# ============================================================
+
+@st.cache_data(show_spinner=False)
+def get_species_list_cached(
+    source_df,
+    column_map,
+):
+    """
+    Cache species-list generation.
+    """
+
+    return species_list(
+        source_df,
+        column_map,
+    )
+
+
+# ============================================================
+# CACHED STANDARD FILTER
+# ============================================================
+
+@st.cache_data(show_spinner=False)
+def apply_gallery_filters_cached(
+    source_df,
+    column_map,
+    selected_parks,
+    selected_categories,
+    search_text,
+):
+    """
+    Cache the standard dataframe filtering step.
+    """
+
+    return apply_filters(
+        source_df,
+        column_map,
+        selected_parks,
+        selected_categories,
+        search_text,
+    )
 
 
 # ============================================================
@@ -663,21 +767,11 @@ def render_species_parks(
     if not cleaned_parks:
         return
 
-    # --------------------------------------------------------
-    # SINGLE PARK
-    # --------------------------------------------------------
-
     if len(cleaned_parks) == 1:
 
         label = "National Park"
 
-        park_text = (
-            cleaned_parks[0]
-        )
-
-    # --------------------------------------------------------
-    # MULTIPLE PARKS
-    # --------------------------------------------------------
+        park_text = cleaned_parks[0]
 
     else:
 
@@ -695,17 +789,33 @@ def render_species_parks(
         park_text
     )
 
-    # HTML intentionally begins at the far left so Streamlit
-    # does not interpret it as a Markdown code block.
-
     park_html = f"""
-<div style="margin-top:8px; padding-top:9px; border-top:1px solid #ECEFF1;">
-<div style="font-size:10px; line-height:1.2; font-weight:600; text-transform:uppercase; letter-spacing:0.45px; color:#9299A1; margin-bottom:4px;">
-{label}
-</div>
-<div style="font-size:12px; line-height:1.45; font-weight:500; color:#5C646C; padding-bottom:2px;">
-{park_text}
-</div>
+<div style="
+    margin-top:8px;
+    padding-top:9px;
+    border-top:1px solid #ECEFF1;
+">
+    <div style="
+        font-size:10px;
+        line-height:1.2;
+        font-weight:600;
+        text-transform:uppercase;
+        letter-spacing:0.45px;
+        color:#9299A1;
+        margin-bottom:4px;
+    ">
+        {label}
+    </div>
+
+    <div style="
+        font-size:12px;
+        line-height:1.45;
+        font-weight:500;
+        color:#5C646C;
+        padding-bottom:2px;
+    ">
+        {park_text}
+    </div>
 </div>
 """
 
@@ -714,10 +824,6 @@ def render_species_parks(
         unsafe_allow_html=True,
     )
 
-
-# ============================================================
-# SIDEBAR NAVIGATION
-# ============================================================
 
 # ============================================================
 # SIDEBAR NAVIGATION
@@ -747,7 +853,7 @@ st.sidebar.divider()
 
 try:
 
-    df, cols = get_data(
+    df, cols = load_gallery_data(
         DATA_PATH
     )
 
@@ -766,22 +872,18 @@ except FileNotFoundError:
 # FILTER OPTIONS
 # ============================================================
 
-park_options = unique_values(
-    df,
-    cols["park_name"],
-)
-
-category_options = unique_values(
-    df,
-    cols["category"],
-)
-
 park_options = list(
-    park_options
+    unique_values(
+        df,
+        cols["park_name"],
+    )
 )
 
 category_options = list(
-    category_options
+    unique_values(
+        df,
+        cols["category"],
+    )
 )
 
 
@@ -789,57 +891,27 @@ category_options = list(
 # SESSION STATE
 # ============================================================
 
-if "gallery_park_filter" not in st.session_state:
+defaults = {
+    "gallery_park_filter": [],
+    "gallery_category_filter": [],
+    "gallery_species_search": "",
+    "smart_species_query": "",
+    "smart_species_term": "",
+    "gallery_page": 1,
+    "search_error": "",
+}
 
-    st.session_state[
-        "gallery_park_filter"
-    ] = []
+for key, default_value in defaults.items():
 
+    if key not in st.session_state:
 
-if "gallery_category_filter" not in st.session_state:
-
-    st.session_state[
-        "gallery_category_filter"
-    ] = []
-
-
-if "gallery_species_search" not in st.session_state:
-
-    st.session_state[
-        "gallery_species_search"
-    ] = ""
-
-
-if "smart_species_query" not in st.session_state:
-
-    st.session_state[
-        "smart_species_query"
-    ] = ""
-
-
-if "smart_species_term" not in st.session_state:
-
-    st.session_state[
-        "smart_species_term"
-    ] = ""
-
-
-if "gallery_page" not in st.session_state:
-
-    st.session_state[
-        "gallery_page"
-    ] = 1
-
-
-if "search_error" not in st.session_state:
-
-    st.session_state[
-        "search_error"
-    ] = ""
+        st.session_state[
+            key
+        ] = default_value
 
 
 # ============================================================
-# SEARCH CALLBACK
+# SMART SEARCH FUNCTION
 # ============================================================
 
 def run_smart_search():
@@ -863,8 +935,8 @@ def run_smart_search():
 
         result = interpret_search(
             query,
-            park_options,
-            category_options,
+            tuple(park_options),
+            tuple(category_options),
         )
 
         # ----------------------------------------------------
@@ -904,15 +976,7 @@ def run_smart_search():
             ] = []
 
         # ----------------------------------------------------
-        # SMART SPECIES FILTER
-        # --------------------------------------------------------
-        #
-        # IMPORTANT:
-        #
-        # Do NOT put this inside gallery_species_search.
-        #
-        # That old field uses the regular broad text search.
-        # Instead, smart searches are handled separately.
+        # SMART SPECIES TERM
         # ----------------------------------------------------
 
         if result["species"]:
@@ -927,29 +991,15 @@ def run_smart_search():
                 "smart_species_term"
             ] = ""
 
-        # ----------------------------------------------------
-        # CLEAR MANUAL SPECIES SEARCH
-        # --------------------------------------------------------
-        #
-        # Prevent an old manual filter from interfering
-        # with a new smart search.
-        # ----------------------------------------------------
-
+        # Prevent old manual search from interfering
         st.session_state[
             "gallery_species_search"
         ] = ""
 
-        # ----------------------------------------------------
-        # RETURN TO PAGE 1
-        # ----------------------------------------------------
-
+        # Return to first page
         st.session_state[
             "gallery_page"
         ] = 1
-
-        # ----------------------------------------------------
-        # CLEAR ERROR
-        # ----------------------------------------------------
 
         st.session_state[
             "search_error"
@@ -969,8 +1019,7 @@ def run_smart_search():
         st.session_state[
             "search_error"
         ] = (
-            f"Search could not be completed: "
-            f"{error}"
+            f"Search could not be completed: {error}"
         )
 
 
@@ -1010,24 +1059,37 @@ def clear_gallery_search():
 
 
 # ============================================================
-# MAIN SEARCH
+# SMART SEARCH FORM
 # ============================================================
 
 st.sidebar.markdown(
     "## Search"
 )
 
-st.sidebar.text_input(
-    "Search species or National Park",
-    placeholder="Species or National Park...",
-    key="smart_species_query",
-)
+with st.sidebar.form(
+    "gallery_smart_search_form",
+    clear_on_submit=False,
+):
 
-st.sidebar.button(
-    "Search",
-    use_container_width=True,
-    on_click=run_smart_search,
-)
+    st.text_input(
+        "Search species or National Park",
+        placeholder="Species or National Park...",
+        key="smart_species_query",
+    )
+
+    smart_search_submitted = st.form_submit_button(
+        "Search",
+        use_container_width=True,
+    )
+
+
+# IMPORTANT:
+# This runs BEFORE the filter widgets below are created,
+# which allows us to safely update their session-state values.
+
+if smart_search_submitted:
+
+    run_smart_search()
 
 
 # ============================================================
@@ -1045,6 +1107,10 @@ if st.session_state.get(
     )
 
 
+# ============================================================
+# CLEAR SEARCH BUTTON
+# ============================================================
+
 st.sidebar.button(
     "Clear Search",
     use_container_width=True,
@@ -1055,35 +1121,56 @@ st.sidebar.divider()
 
 
 # ============================================================
-# FILTERS
+# FILTER FORM
 # ============================================================
 
 st.sidebar.markdown(
     "## Filters"
 )
 
+with st.sidebar.form(
+    "gallery_filters_form",
+    clear_on_submit=False,
+):
 
-selected_parks = st.sidebar.multiselect(
-    "Park name",
-    park_options,
-    placeholder="All parks",
-    key="gallery_park_filter",
-)
+    selected_parks = st.multiselect(
+        "Park name",
+        park_options,
+        placeholder="All parks",
+        key="gallery_park_filter",
+    )
+
+    selected_categories = st.multiselect(
+        "Category",
+        category_options,
+        placeholder="All categories",
+        key="gallery_category_filter",
+    )
+
+    search_text = st.text_input(
+        "Search species",
+        placeholder="Scientific or common name...",
+        key="gallery_species_search",
+    )
+
+    filters_submitted = st.form_submit_button(
+        "Apply Filters",
+        use_container_width=True,
+    )
 
 
-selected_categories = st.sidebar.multiselect(
-    "Category",
-    category_options,
-    placeholder="All categories",
-    key="gallery_category_filter",
-)
+if filters_submitted:
 
+    # Clear AI-generated species term so manual filtering
+    # becomes the active filter mode.
 
-search_text = st.sidebar.text_input(
-    "Search species",
-    placeholder="Scientific or common name...",
-    key="gallery_species_search",
-)
+    st.session_state[
+        "smart_species_term"
+    ] = ""
+
+    st.session_state[
+        "gallery_page"
+    ] = 1
 
 
 st.sidebar.caption(
@@ -1092,30 +1179,40 @@ st.sidebar.caption(
 
 
 # ============================================================
+# CURRENT FILTER VALUES
+# ============================================================
+
+selected_parks = st.session_state.get(
+    "gallery_park_filter",
+    [],
+)
+
+selected_categories = st.session_state.get(
+    "gallery_category_filter",
+    [],
+)
+
+search_text = st.session_state.get(
+    "gallery_species_search",
+    "",
+)
+
+
+# ============================================================
 # APPLY STANDARD FILTERS
 # ============================================================
 
-fdf = apply_filters(
+fdf = apply_gallery_filters_cached(
     df,
     cols,
-    selected_parks,
-    selected_categories,
+    tuple(selected_parks),
+    tuple(selected_categories),
     search_text,
 )
 
 
 # ============================================================
 # APPLY SMART SPECIES SEARCH
-# ============================================================
-#
-# This runs AFTER the normal filters.
-#
-# A search such as:
-#
-# bear
-#
-# is now treated as a species-name word instead of a loose
-# substring.
 # ============================================================
 
 fdf = apply_smart_species_search(
@@ -1144,7 +1241,7 @@ species_park_lookup = (
 # SPECIES LIST
 # ============================================================
 
-sp_df = species_list(
+sp_df = get_species_list_cached(
     fdf,
     cols,
 )
@@ -1160,7 +1257,6 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
-
 
 st.markdown(
     '<div class="dash-sub">'
@@ -1240,7 +1336,11 @@ st.markdown(
 
 PER_ROW = 5
 
-PER_PAGE = 25
+# Reduced from 25.
+# Rendering fewer species cards per page makes interaction
+# noticeably lighter, especially if species_card() performs
+# an iNaturalist lookup.
+PER_PAGE = 15
 
 total = len(
     sp_df
@@ -1325,8 +1425,8 @@ with top_l:
     st.markdown(
         f"""
 <div class="card-sub" style="margin-top:28px;">
-Showing {start + 1}-{end} of {total:,} species
-(page {int(page)} of {n_pages})
+    Showing {start + 1}-{end} of {total:,} species
+    (page {int(page)} of {n_pages})
 </div>
 """,
         unsafe_allow_html=True,
@@ -1353,7 +1453,6 @@ rows = [
         len(chunk),
         PER_ROW,
     )
-
 ]
 
 
@@ -1400,7 +1499,6 @@ for row_df in rows:
                     )
                 )
 
-
                 # --------------------------------------------
                 # SPECIES PHOTO CARD
                 # --------------------------------------------
@@ -1409,7 +1507,6 @@ for row_df in rows:
                     scientific_name,
                     common_names,
                 )
-
 
                 # --------------------------------------------
                 # FIND NATIONAL PARK(S)
@@ -1428,7 +1525,6 @@ for row_df in rows:
                         [],
                     )
                 )
-
 
                 # --------------------------------------------
                 # DISPLAY NATIONAL PARK(S)
